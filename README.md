@@ -1,8 +1,12 @@
 # Image Digest Advisor
 
-**Is my pinned container image still up to date?** Image Digest Advisor is a Windows app that checks a Docker image digest such as `nginx:1.26@sha256:192e…` and tells you whether it is outdated. If it is, the app suggests an updated `repo:tag@sha256:…` reference that you can paste into your Dockerfile, compose file or Kubernetes manifest.
+**Is my pinned container image still up to date?** Image Digest Advisor is a Windows app that checks a Docker image digest such as `mcr.microsoft.com/dotnet/sdk:10.0@sha256:0d99…` and tells you whether it is outdated.
 
-![Image Digest Advisor showing an outdated image and the recommended update](docs/images/check-result.png)
+If it is, the app:
+- suggests an updated `repo:tag@sha256:…` reference that you can paste into your Dockerfile, compose file or Kubernetes manifest, and
+- shows **what changed**, e.g. *.NET SDK 10.0.402 → 10.0.403*.
+
+![Image Digest Advisor: the pinned .NET SDK image is outdated; the recommended update contains .NET 10.0.14 and SDK 10.0.403](docs/images/check-result.png)
 
 - [For users](#for-users): [supported registries](#supported-registries), install, check an image, read the result, registry accounts
 - [For developers](#for-developers): architecture, build, releases
@@ -18,12 +22,23 @@ For an image you enter, the app checks:
 
 | Check | Example |
 |---|---|
-| **Has the tag moved?** The same tag now points to a newer build. | `nginx:1.26` was rebuilt, and your digest is the old build. |
+| **Has the tag moved?** The same tag now points to a newer build. | `dotnet/sdk:10.0` was rebuilt 23 days after your build. |
+| **What's inside the newer build?** The software versions declared in both images are compared. | *.NET Runtime 10.0.13 → 10.0.14, .NET SDK 10.0.402 → 10.0.403*. Or: "same versions, rebuilt with base image / OS updates". |
 | **Is there a newer patch or minor version?** It stays in the same variant. | `1.26.0` → `1.26.3`, or `1.27.2-alpine` → `1.31.8-alpine` (never `-bookworm`) |
-| **Is there a new major version?** Shown for information only. | `8.0.x` → `10.0.x` |
+| **Is there a new major version?** Shown for information only. | `10.0` → `11.0` |
+| **Is the newer version a pre-release?** Preview and RC builds are marked and never recommended. | `sdk:11.0` currently contains *11.0.0-rc.3*, so it's shown as "⚠ pre-release" |
 | **Is the image old?** It was built more than *n* days ago (default 90). | "built 919 days ago" |
 
-For your image and for each suggestion it shows the build date and age, platform, size, number of layers, all tags pointing to it, the digests, and the image's labels (version, source repository, revision).
+For your image and for each suggestion, the app shows:
+
+- **Software versions** the image contains, e.g. .NET Runtime, ASP.NET Core, .NET SDK, nginx, Node.js, Python, Java, Go, PostgreSQL, Redis. These are read from the image's `*_VERSION` variables.
+- **What changed compared with your image** (on suggestions), and how much newer the build is.
+- **Build date** in local time and UTC, and the age.
+- **Platforms:** all platforms the image supports, e.g. `linux/amd64 · linux/arm/v7 · linux/arm64`.
+- **Size, layers, tags and digests.**
+- **Image labels:** version, source repository, revision, base image.
+- **How the container starts:** user, working directory, start command, exposed ports.
+- **Expandable details:** all labels, all environment variables, and the complete **build history** (every Dockerfile step with its date).
 
 ## Supported registries
 
@@ -107,15 +122,31 @@ Recent inputs are remembered. Click into the empty input box to see them.
 - 🟡 **Outdated**: the tag has moved, a newer patch or minor version exists, or the image is older than your limit.
 - 🔵 **Could not determine**: the tag of the digest is unknown. Enter the image as `repo:tag@sha256:…`.
 
-**The findings list** explains each reason, e.g. *"Tag '1.26' now points to a different image, built 278 days later than yours."*
+**The findings list** explains each reason, for example:
 
-**Requested vs. Suggested:** on the left is your image, on the right are the suggested updates. Each card has a **Copy** button for the ready-to-paste reference. One suggestion is marked **Recommended**:
+- ⚠ *Tag '10.0' now points to a different image, built 23 days later than yours.*
+- ℹ *The newer build updates: .NET Runtime 10.0.13 → 10.0.14, ASP.NET Core 10.0.13 → 10.0.14, .NET SDK 10.0.402 → 10.0.403.*
+- ℹ *A newer major version exists: 11.0. It contains pre-release software (.NET Runtime 11.0.0-rc.3…), not a stable release yet.*
+
+**Requested vs. Suggested:** on the left is your image, on the right are the suggested updates. Each card has a **Copy** button for the ready-to-paste reference.
+
+On each suggestion:
+- **Replaces** says how much newer it is than your build.
+- **Changes vs. yours** lists the software versions that differ, shown in bold.
+
+One suggestion is marked **Recommended**:
 
 1. the newest **patch** of your version line, otherwise
 2. the **current digest of your tag** (same tag, rebuilt), otherwise
 3. the newest **minor** version.
 
-A new **major** version is shown but never recommended automatically, because it may contain breaking changes.
+Some suggestions are never recommended automatically:
+- A new **major** version is shown, but it may contain breaking changes.
+- **Pre-releases** (preview or RC) are labelled *"⚠ pre-release (preview/RC), not a stable version"*. They also don't make your image "outdated".
+
+![Image details: build history of your image, and the pre-release 11.0 suggestion with software versions and changes](docs/images/image-details.png)
+
+Scroll down on a card for the full details. Expand **Environment variables** or **Build history** to see exactly how the image was built, e.g. which `DOTNET_VERSION` was set in which step.
 
 > **Tip:** Copy the reference **with** the tag, e.g. `nginx:1.26.3@sha256:41b1…`. The digest guarantees the exact image, and the tag keeps it readable.
 
@@ -159,6 +190,7 @@ Click **Test connection** before saving.
 | *"Could not determine"*, or no suggestions | Enter the tag as well: `repo:tag@sha256:…`. |
 | *"The tag … was guessed"* | The digest no longer has a tag, so the app used the version stored inside the image. Add the tag to your input for exact results. |
 | *"not available for linux/arm64"* | The suggested image doesn't support your platform. Choose another version. |
+| No **Software** row on a card | The image doesn't declare its versions in `*_VERSION` environment variables. Check **Version label**, **Build history** or the source repository instead. |
 | *"Update check failed"* | Usually no internet connection, or GitHub is blocked by a proxy. The app keeps working; try again later under **Settings › Updates**. |
 | The app doesn't start | Send `%LOCALAPPDATA%\ImageDigestAdvisor.Data\crash.log` to the maintainer, or [open an issue](https://github.com/hvetter-de/Image-Digest-Advisor/issues). |
 
@@ -183,11 +215,12 @@ Entry points: `DigestAnalyzer` (the analysis), `RegistryClient` (OCI Distributio
 ## How an analysis works
 
 1. Parse the reference (`nginx` → `docker.io/library/nginx`).
-2. Load the manifest by digest. For a multi-arch index, pick the platform manifest. Then read the config blob to get the created date, labels and environment.
+2. Load the manifest by digest. For a multi-arch index, pick the platform manifest. Then read the config blob to get the created date, labels, environment, entrypoint/cmd, user, ports and build history (`ManifestParser.ParseConfig` → `ImageConfig`).
 3. List tags. Docker Hub uses its web API, which includes digests. Other registries use `/v2/<repo>/tags/list`.
 4. Find the tags of the digest. If there are none, use version hints from the image (`org.opencontainers.image.version`, `*_VERSION` environment variables) and confirm them with HEAD requests.
 5. Resolve the same tag's current digest, plus the newest patch, minor and major in the same tag family. A family means the same prefix, the same number of version parts, and the same suffix with digits ignored (see `TagVersion`).
-6. Build findings and an overall status, and deduplicate suggestions by digest.
+6. Compare software versions. `ImageDetails.SoftwareVersions` collects the `*_VERSION` environment variables, and `SoftwareChangesSince` compares two images. Versions with `-rc`, `-preview` and similar suffixes count as pre-releases (`SoftwareVersion.IsPrerelease`). They never raise a warning and are never recommended.
+7. Build findings and an overall status, and deduplicate suggestions by digest.
 
 ## How credentials are resolved
 
