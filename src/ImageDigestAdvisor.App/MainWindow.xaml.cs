@@ -14,7 +14,8 @@ public sealed partial class MainWindow : Window
 
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
-        var icon = Path.Combine(AppContext.BaseDirectory, "Assets", "AppIcon.png");
+        // Taskbar, Alt+Tab and title bar icon. AppWindow.SetIcon only accepts .ico files (a .png is silently ignored).
+        var icon = Path.Combine(AppContext.BaseDirectory, "Assets", "AppIcon.ico");
         if (File.Exists(icon)) AppWindow.SetIcon(icon);
         AppWindow.Resize(new Windows.Graphics.SizeInt32(1280, 900));
         if (AppWindow.Presenter is OverlappedPresenter presenter)
