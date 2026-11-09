@@ -4,7 +4,7 @@
 
 ![Image Digest Advisor showing an outdated image and the recommended update](docs/images/check-result.png)
 
-- [For users](#for-users): install, check an image, read the result, registry accounts
+- [For users](#for-users): [supported registries](#supported-registries), install, check an image, read the result, registry accounts
 - [For developers](#for-developers): architecture, build, releases
 - [License](#license): free software under GPL-3.0
 
@@ -25,7 +25,33 @@ For an image you enter, the app checks:
 
 For your image and for each suggestion it shows the build date and age, platform, size, number of layers, all tags pointing to it, the digests, and the image's labels (version, source repository, revision).
 
-The app works with Docker Hub, Microsoft Container Registry (`mcr.microsoft.com`), GitHub (`ghcr.io`), Quay, Azure Container Registry and any other standard registry.
+## Supported registries
+
+The app talks directly to registries over the standard **OCI Distribution API**, the same protocol `docker pull` uses. Any registry that implements it works.
+
+| Registry | Host | Public images without login | Login for private images / higher limits | Notes |
+|---|---|---|---|---|
+| **Docker Hub** | `docker.io` (or no host: `nginx`, `bitnami/redis`) | ✅ | Docker ID + personal access token | Fastest tag lookup via the Docker Hub API. Anonymous use is rate-limited; the app shows the remaining pulls. ✔ tested |
+| **Microsoft Container Registry** | `mcr.microsoft.com` | ✅ | not needed (public only) | e.g. `mcr.microsoft.com/dotnet/aspnet:8.0`. ✔ tested |
+| **GitHub Container Registry** | `ghcr.io` | ✅ | GitHub username + PAT with `read:packages` | ✔ tested |
+| **Quay** | `quay.io` | ✅ | Robot account + token | ✔ tested |
+| **Azure Container Registry** | `<name>.azurecr.io` | only if anonymous pull is enabled | Repository-scoped token, admin user, or an existing `docker login` / `az acr login` | |
+| **Amazon ECR Public** | `public.ecr.aws` | ✅ | not needed | |
+| **Amazon ECR (private)** | `<account>.dkr.ecr.<region>.amazonaws.com` | – | `docker login` with the ECR credential helper (`docker-credential-ecr-login`) | ECR passwords expire after 12 hours, so the credential helper is the practical option |
+| **Google Artifact Registry** | `<region>-docker.pkg.dev` | for public repositories | `docker login` via `gcloud auth configure-docker`, or user `oauth2accesstoken` + access token | |
+| **GitLab Container Registry** | `registry.gitlab.com` (or self-hosted) | for public projects | Username + personal/deploy token with `read_registry` | |
+| **Self-hosted** | Harbor, Sonatype Nexus, JFrog Artifactory, Gitea/Forgejo, `registry:2`, … | depends on setup | Username + password/token | Must be reachable over **HTTPS** |
+
+✔ tested = verified against the live registry. The other registries use the same standard protocol and authentication (Bearer token or Basic auth), so they're expected to work. If one doesn't, please [open an issue](https://github.com/hvetter-de/Image-Digest-Advisor/issues).
+
+**Logins** can come from the app's **Registry accounts** page, or from an existing `docker login` on your PC, including credential helpers like Docker Desktop, ECR or gcloud, if they're installed. See [Registry accounts](#registry-accounts-optional).
+
+**Not supported:**
+- Registries over plain **HTTP** (e.g. an insecure `localhost:5000`). Self-signed HTTPS certificates must be trusted by Windows.
+- Images in the old **Docker schema 1** manifest format (pre-2017).
+- Docker Hub mirrors or pull-through caches don't have their own tag API. They work like any other registry, but finding the tag of a bare digest is slower.
+
+**Image types:** Linux and Windows images, single-platform and multi-arch images (choose the platform in the app), Docker and OCI manifest formats.
 
 ## Install
 
@@ -215,7 +241,7 @@ Release assets per architecture:
 |---|---|
 | `ImageDigestAdvisor-win-<arch>-Setup.exe` | Installer for users (per user, no admin rights) |
 | `ImageDigestAdvisor-win-<arch>-Portable.zip` | Portable version, which can also update itself |
-| `*-full.nupkg`, `*-delta.nupkg`, `releases.win-<arch>.json`, `RELEASES-win-<arch>`, `assets.win-<arch>.json` | Used by the updater. Don't delete them from a release. |
+| `*-full.nupkg`, `*-delta.nupkg` (from the second release on), `releases.win-<arch>.json` | Used by the updater. Don't delete them from a release. |
 
 - **Pre-releases:** tags with a suffix (`v1.3.0-beta.1`) become GitHub pre-releases, and installed apps don't update to them.
 - **Test build:** *Actions › Release › Run workflow* builds the packages as a workflow artifact without publishing anything.
