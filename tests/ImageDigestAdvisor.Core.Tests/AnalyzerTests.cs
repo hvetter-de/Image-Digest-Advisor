@@ -63,10 +63,42 @@ public sealed class AnalyzerTests
 
         Assert.AreEqual(OverallStatus.Outdated, result.Status);
         Assert.IsTrue(result.Findings.Any(f => f.Kind == FindingKind.TagMoved));
+        Assert.IsFalse(result.Findings.Any(f => f.Kind == FindingKind.SoftwareChanges), "No version variables, so nothing to compare.");
         var s = result.Suggestions.Single();
         Assert.AreEqual(SuggestionKind.SameTag, s.Kind);
         Assert.AreEqual($"{Repo}:1.4@{rebuilt.IndexDigest}", s.PinnedReference);
         Assert.AreEqual(Now.AddDays(-2), s.Details.Created);
+    }
+
+    [TestMethod]
+    public async Task MovedTagReportsWhichSoftwareVersionsChanged()
+    {
+        var old = _registry.AddImage(Now.AddDays(-30), env: new Dictionary<string, string> { ["DOTNET_VERSION"] = "10.0.13" }, salt: "old");
+        var rebuilt = _registry.AddImage(Now.AddDays(-2), env: new Dictionary<string, string> { ["DOTNET_VERSION"] = "10.0.14" }, salt: "new");
+        _registry.Tag("team/web", "10.0", rebuilt.IndexDigest);
+
+        var result = await _analyzer.AnalyzeAsync($"{Repo}:10.0@{old.IndexDigest}", Options());
+
+        var finding = result.Findings.Single(f => f.Kind == FindingKind.SoftwareChanges);
+        StringAssert.Contains(finding.Message, ".NET Runtime 10.0.13 → 10.0.14");
+        Assert.AreEqual("10.0.13", result.Requested.SoftwareVersions.Single().Value);
+    }
+
+    [TestMethod]
+    public async Task PrereleaseNewerVersionDoesNotMakeImageOutdated()
+    {
+        var current = _registry.AddImage(Now.AddDays(-5), env: new Dictionary<string, string> { ["DOTNET_VERSION"] = "10.0.14" }, salt: "ga");
+        var preview = _registry.AddImage(Now.AddDays(-1), env: new Dictionary<string, string> { ["DOTNET_VERSION"] = "10.1.0-rc.1" }, salt: "rc");
+        _registry.Tag("team/web", "10.0", current.IndexDigest);
+        _registry.Tag("team/web", "10.1", preview.IndexDigest);
+
+        var result = await _analyzer.AnalyzeAsync($"{Repo}:10.0@{current.IndexDigest}", Options());
+
+        var finding = result.Findings.Single(f => f.Kind == FindingKind.NewerMinorAvailable);
+        Assert.AreEqual(Severity.Info, finding.Severity);
+        StringAssert.Contains(finding.Message, "pre-release");
+        Assert.AreEqual(OverallStatus.UpToDate, result.Status);
+        Assert.IsTrue(result.Suggestions.Single().Details.ContainsPrereleaseSoftware);
     }
 
     [TestMethod]

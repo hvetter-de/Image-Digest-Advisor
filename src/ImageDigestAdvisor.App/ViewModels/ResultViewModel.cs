@@ -44,9 +44,11 @@ public sealed class ResultViewModel
         };
         Requested = new ImageCardViewModel(requestedTitle, requestedSubtitle, requestedRef, result.Requested, now);
 
-        var recommended = PickRecommended(result.Suggestions);
+        // Never recommend preview/RC software to someone running a stable release.
+        var allowPrerelease = result.Requested.ContainsPrereleaseSoftware;
+        var recommended = PickRecommended(result.Suggestions.Where(s => allowPrerelease || !s.Details.ContainsPrereleaseSoftware).ToList());
         Suggestions = result.Suggestions
-            .Select(s => new ImageCardViewModel(s.Title, Describe(s), s.PinnedReference, s.Details, now, ReferenceEquals(s, recommended)))
+            .Select(s => new ImageCardViewModel(s.Title, Describe(s, allowPrerelease), s.PinnedReference, s.Details, now, ReferenceEquals(s, recommended), compareTo: result.Requested))
             .ToList();
 
         if (result.RateLimit is { Remaining: { } remaining } rl)
@@ -97,7 +99,15 @@ public sealed class ResultViewModel
         return null;
     }
 
-    private static string Describe(Suggestion s)
+    private static string Describe(Suggestion s, bool allowPrerelease)
+    {
+        var description = DescribeKinds(s);
+        return s.Details.ContainsPrereleaseSoftware && !allowPrerelease
+            ? description + " · ⚠ pre-release (preview/RC), not a stable version"
+            : description;
+    }
+
+    private static string DescribeKinds(Suggestion s)
     {
         var kinds = new[] { s.Kind }.Concat(s.AlsoKinds).Select(k => k switch
         {

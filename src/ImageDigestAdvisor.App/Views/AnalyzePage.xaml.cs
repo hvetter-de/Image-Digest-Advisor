@@ -18,6 +18,9 @@ public sealed partial class AnalyzePage : Page
 
     public AnalyzeViewModel ViewModel => SharedViewModel.Value;
 
+    public static Windows.UI.Text.FontWeight WeightIf(bool emphasis) =>
+        emphasis ? Microsoft.UI.Text.FontWeights.SemiBold : Microsoft.UI.Text.FontWeights.Normal;
+
     public static FontFamily MonoFontIf(bool monospace) =>
         monospace ? (FontFamily)Application.Current.Resources["MonoFont"] : new FontFamily("Segoe UI Variable Text, Segoe UI");
 

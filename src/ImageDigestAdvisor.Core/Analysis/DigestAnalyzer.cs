@@ -119,6 +119,10 @@ public sealed class DigestAnalyzer(RegistryClient registry, ITagCatalog catalog,
             else
             {
                 findings.Add(new Finding(FindingKind.TagMoved, Severity.Warning, TagMovedMessage(effectiveTag, requested, sameTag.Details)));
+                if (SoftwareChangesMessage(requested, sameTag.Details) is { } changes)
+                {
+                    findings.Add(new Finding(FindingKind.SoftwareChanges, Severity.Info, changes));
+                }
             }
         }
         else if (!userGaveDigest && effectiveTag is not null)
@@ -128,16 +132,19 @@ public sealed class DigestAnalyzer(RegistryClient registry, ITagCatalog catalog,
 
         foreach (var c in candidateDetails)
         {
+            // A tag with preview/RC software (e.g. sdk:11.0 before GA) is mentioned, but never makes the image "outdated".
+            var pre = c.Details.ContainsPrereleaseSoftware && !requested.ContainsPrereleaseSoftware;
+            var preNote = pre ? $" It contains pre-release software ({PrereleaseList(c.Details)}), not a stable release yet." : string.Empty;
             switch (c.Kind)
             {
                 case SuggestionKind.NewestPatch:
-                    findings.Add(new Finding(FindingKind.NewerPatchAvailable, Severity.Warning, $"A newer patch version is available: {c.Tag}."));
+                    findings.Add(new Finding(FindingKind.NewerPatchAvailable, pre ? Severity.Info : Severity.Warning, $"A newer patch version is available: {c.Tag}.{preNote}"));
                     break;
                 case SuggestionKind.NewestMinor:
-                    findings.Add(new Finding(FindingKind.NewerMinorAvailable, Severity.Warning, $"A newer minor version is available: {c.Tag}."));
+                    findings.Add(new Finding(FindingKind.NewerMinorAvailable, pre ? Severity.Info : Severity.Warning, $"A newer minor version is available: {c.Tag}.{preNote}"));
                     break;
                 case SuggestionKind.NewestMajor:
-                    findings.Add(new Finding(FindingKind.NewerMajorAvailable, Severity.Info, $"A newer major version exists: {c.Tag} (may contain breaking changes)."));
+                    findings.Add(new Finding(FindingKind.NewerMajorAvailable, Severity.Info, $"A newer major version exists: {c.Tag} (may contain breaking changes).{preNote}"));
                     break;
             }
         }
@@ -194,6 +201,21 @@ public sealed class DigestAnalyzer(RegistryClient registry, ITagCatalog catalog,
 
     private static bool IsSameImage(ImageDetails a, ImageDetails b) =>
         a.HasDigest(b.ManifestDigest) || (b.IndexDigest is not null && a.HasDigest(b.IndexDigest));
+
+    private static string PrereleaseList(ImageDetails details) =>
+        string.Join(", ", details.SoftwareVersions.Where(v => v.IsPrerelease).Select(v => $"{v.DisplayName} {v.Value}").Take(2));
+
+    /// <summary>Explains what the newer build of the same tag contains, based on the declared software versions.</summary>
+    internal static string? SoftwareChangesMessage(ImageDetails requested, ImageDetails current)
+    {
+        if (requested.SoftwareVersions.Count == 0 && current.SoftwareVersions.Count == 0) return null;
+
+        var changes = current.SoftwareChangesSince(requested);
+        return changes.Count > 0
+            ? "The newer build updates: " + string.Join(", ", changes) + "."
+            : "The software versions are unchanged (" + string.Join(", ", current.SoftwareVersions.Select(v => $"{v.DisplayName} {v.Value}")) +
+              "). The rebuild most likely contains base image or operating system security updates.";
+    }
 
     private static string TagMovedMessage(string tag, ImageDetails requested, ImageDetails current)
     {

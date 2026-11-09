@@ -37,7 +37,26 @@ public sealed record ImageConfig(
     DateTimeOffset? Created,
     Platform? Platform,
     IReadOnlyDictionary<string, string> Labels,
-    IReadOnlyDictionary<string, string> Environment);
+    IReadOnlyDictionary<string, string> Environment)
+{
+    public IReadOnlyList<string> Entrypoint { get; init; } = [];
+
+    public IReadOnlyList<string> Cmd { get; init; } = [];
+
+    public string? User { get; init; }
+
+    public string? WorkingDir { get; init; }
+
+    public IReadOnlyList<string> ExposedPorts { get; init; } = [];
+
+    /// <summary>Windows images: the Windows build, e.g. <c>10.0.26100.4652</c>.</summary>
+    public string? OsVersion { get; init; }
+
+    public IReadOnlyList<HistoryEntry> History { get; init; } = [];
+}
+
+/// <summary>One build step from the image config history (Dockerfile instruction).</summary>
+public sealed record HistoryEntry(DateTimeOffset? Created, string CreatedBy, bool EmptyLayer, string? Comment);
 
 public static class ManifestParser
 {
@@ -121,8 +140,19 @@ public static class ManifestParser
 
         var labels = new Dictionary<string, string>(StringComparer.Ordinal);
         var env = new Dictionary<string, string>(StringComparer.Ordinal);
+        IReadOnlyList<string> entrypoint = [], cmd = [], ports = [];
+        string? user = null, workingDir = null;
         if (root.TryGetProperty("config", out var cfg) && cfg.ValueKind == JsonValueKind.Object)
         {
+            entrypoint = StrArray(cfg, "Entrypoint");
+            cmd = StrArray(cfg, "Cmd");
+            user = Str(cfg, "User") is { Length: > 0 } u ? u : null;
+            workingDir = Str(cfg, "WorkingDir") is { Length: > 0 } w ? w : null;
+            if (cfg.TryGetProperty("ExposedPorts", out var ep) && ep.ValueKind == JsonValueKind.Object)
+            {
+                ports = ep.EnumerateObject().Select(p => p.Name).ToList();
+            }
+
             if (cfg.TryGetProperty("Labels", out var lbl) && lbl.ValueKind == JsonValueKind.Object)
             {
                 foreach (var p in lbl.EnumerateObject())
@@ -142,9 +172,37 @@ public static class ManifestParser
             }
         }
 
-        return new ImageConfig(created, platform, labels, env);
+        var history = new List<HistoryEntry>();
+        if (root.TryGetProperty("history", out var h) && h.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var step in h.EnumerateArray())
+            {
+                DateTimeOffset? stepCreated = Str(step, "created") is { } sc
+                    && DateTimeOffset.TryParse(sc, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var sp) && sp.Year > 1970
+                    ? sp
+                    : null;
+                var empty = step.TryGetProperty("empty_layer", out var el) && el.ValueKind == JsonValueKind.True;
+                history.Add(new HistoryEntry(stepCreated, Str(step, "created_by") ?? string.Empty, empty, Str(step, "comment")));
+            }
+        }
+
+        return new ImageConfig(created, platform, labels, env)
+        {
+            Entrypoint = entrypoint,
+            Cmd = cmd,
+            User = user,
+            WorkingDir = workingDir,
+            ExposedPorts = ports,
+            OsVersion = Str(root, "os.version"),
+            History = history,
+        };
     }
 
     private static string? Str(JsonElement e, string name) =>
         e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
+
+    private static IReadOnlyList<string> StrArray(JsonElement e, string name) =>
+        e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Array
+            ? v.EnumerateArray().Where(x => x.ValueKind == JsonValueKind.String).Select(x => x.GetString()!).ToList()
+            : [];
 }

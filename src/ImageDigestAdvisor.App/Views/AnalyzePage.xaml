@@ -13,9 +13,10 @@
                     <ColumnDefinition Width="170" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
-                <TextBlock Text="{x:Bind Name}" Style="{StaticResource PropertyNameStyle}" />
+                <TextBlock Text="{x:Bind Name}" Style="{StaticResource PropertyNameStyle}" TextWrapping="Wrap" />
                 <TextBlock Grid.Column="1" Text="{x:Bind Value}" Style="{StaticResource PropertyValueStyle}"
-                           FontFamily="{x:Bind local:AnalyzePage.MonoFontIf(Monospace)}" Visibility="{x:Bind HasNoLink}" />
+                           FontFamily="{x:Bind local:AnalyzePage.MonoFontIf(Monospace)}"
+                           FontWeight="{x:Bind local:AnalyzePage.WeightIf(Emphasis)}" Visibility="{x:Bind HasNoLink}" />
                 <HyperlinkButton Grid.Column="1" Content="{x:Bind Value}" NavigateUri="{x:Bind LinkUri}"
                                  Padding="0" Margin="0,-4,0,4" Visibility="{x:Bind HasLink}" />
             </Grid>
@@ -60,10 +61,15 @@
 
                     <ItemsControl ItemsSource="{x:Bind Properties}" ItemTemplate="{StaticResource PropertyRowTemplate}" />
 
-                    <Expander Header="{x:Bind LabelsHeader}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
-                              Visibility="{x:Bind HasLabels}">
-                        <ItemsControl ItemsSource="{x:Bind Labels}" ItemTemplate="{StaticResource PropertyRowTemplate}" />
-                    </Expander>
+                    <ItemsControl ItemsSource="{x:Bind Sections}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:DetailSection">
+                                <Expander Header="{x:Bind Header}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Margin="0,0,0,6">
+                                    <ItemsControl ItemsSource="{x:Bind Rows}" ItemTemplate="{StaticResource PropertyRowTemplate}" />
+                                </Expander>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
                 </StackPanel>
             </Border>
         </DataTemplate>

@@ -76,6 +76,7 @@ public sealed class ImageInspector(RegistryClient registry)
             MediaType = doc.MediaType,
             Labels = config?.Labels ?? new Dictionary<string, string>(),
             VersionHints = config is null ? [] : VersionHintsFrom(config),
+            Config = config,
         };
     }
 
