@@ -8,8 +8,7 @@ namespace ImageDigestAdvisor.App.Services;
 /// </summary>
 public sealed class AppSettings
 {
-    private static readonly string FilePath = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ImageDigestAdvisor", "settings.json");
+    private static readonly string FilePath = Core.AppPaths.SettingsFile;
 
     public string Platform { get; set; } = "linux/amd64";
 
@@ -17,6 +16,9 @@ public sealed class AppSettings
     public int MaxAgeDays { get; set; } = 90;
 
     public List<string> RecentInputs { get; set; } = [];
+
+    /// <summary>Check GitHub Releases for a new version when the app starts (Setup.exe installs only).</summary>
+    public bool AutoCheckUpdates { get; set; } = true;
 
     public static AppSettings Load()
     {

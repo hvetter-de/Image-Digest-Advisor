@@ -34,8 +34,7 @@ public sealed class DiskContentCache(string rootDirectory) : IContentCache
 {
     public string RootDirectory { get; } = rootDirectory;
 
-    public static string DefaultDirectory() =>
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ImageDigestAdvisor", "cache");
+    public static string DefaultDirectory() => AppPaths.CacheDirectory;
 
     public async Task<byte[]?> GetAsync(string digest, CancellationToken cancellationToken = default)
     {

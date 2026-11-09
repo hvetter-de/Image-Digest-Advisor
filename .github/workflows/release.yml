@@ -1,0 +1,123 @@
+# Builds, tests and publishes a release with Velopack installers and automatic-update packages.
+#
+#   git tag v1.2.0 && git push origin v1.2.0   -> publishes release "v1.2.0" (x64 + ARM64)
+#   git tag v1.3.0-beta.1 ...                  -> publishes a pre-release (installed apps don't update to it)
+#   Actions > Release > Run workflow           -> builds packages as workflow artifacts only, no release
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version for the test build (nothing is published)'
+        required: true
+        default: '0.0.1'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  REPO_URL: https://github.com/${{ github.repository }}
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Determine version
+        shell: pwsh
+        run: |
+          if ($env:GITHUB_REF_TYPE -eq 'tag') { $version = $env:GITHUB_REF_NAME -replace '^v', '' }
+          else { $version = '${{ inputs.version }}' }
+          if ($version -notmatch '^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$') {
+            throw "'$version' is not a valid version. Use tags like v1.2.3 or v1.2.3-beta.1."
+          }
+          "VERSION=$version" >> $env:GITHUB_ENV
+          "PRERELEASE=$(if ($version.Contains('-')) { 'true' } else { 'false' })" >> $env:GITHUB_ENV
+          Write-Host "Building version $version"
+
+      - name: Restore tools
+        run: dotnet tool restore
+
+      - name: Test
+        run: dotnet test --project tests/ImageDigestAdvisor.Core.Tests
+
+      - name: Download previous release (for delta updates)
+        if: github.ref_type == 'tag'
+        shell: pwsh
+        run: |
+          foreach ($channel in 'win-x64', 'win-arm64') {
+            dotnet vpk download github --repoUrl $env:REPO_URL --channel $channel --outputDir artifacts/releases --token "${{ secrets.GITHUB_TOKEN }}"
+            if ($LASTEXITCODE -ne 0) { Write-Host "No previous release for $channel (first release?) - continuing without deltas." }
+          }
+          $global:LASTEXITCODE = 0
+
+      - name: Write release notes
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force artifacts | Out-Null
+          @"
+          ## Install
+
+          | Your PC | Download |
+          |---|---|
+          | Most Windows PCs (Intel/AMD) | **ImageDigestAdvisor-win-x64-Setup.exe** |
+          | ARM devices (e.g. Snapdragon) | **ImageDigestAdvisor-win-arm64-Setup.exe** |
+
+          Run the setup. No admin rights are needed, and the app is installed for your user only. Already installed? The app updates itself.
+          If Windows shows *"Windows protected your PC"*, choose **More info › Run anyway**.
+
+          Prefer no installer? Use the **Portable.zip** for your PC instead.
+          "@ | Set-Content artifacts/release-notes.md -Encoding utf8
+
+      - name: Pack x64
+        shell: pwsh
+        run: ./build/pack.ps1 -Version $env:VERSION -Runtime win-x64 -OutputDir artifacts/releases -ReleaseNotes artifacts/release-notes.md
+
+      - name: Pack ARM64
+        shell: pwsh
+        run: ./build/pack.ps1 -Version $env:VERSION -Runtime win-arm64 -OutputDir artifacts/releases -ReleaseNotes artifacts/release-notes.md
+
+      - name: Upload packages as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ImageDigestAdvisor-${{ env.VERSION }}
+          path: |
+            artifacts/releases/*Setup.exe
+            artifacts/releases/*Portable.zip
+          retention-days: 14
+
+      - name: Publish GitHub release
+        if: github.ref_type == 'tag'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = $env:GITHUB_REF_NAME
+          $pre = if ($env:PRERELEASE -eq 'true') { @('--pre') } else { @() }
+          $common = @('--repoUrl', $env:REPO_URL, '--outputDir', 'artifacts/releases', '--token', $env:GH_TOKEN,
+                      '--publish', '--tag', $tag, '--releaseName', "Image Digest Advisor $env:VERSION") + $pre
+
+          dotnet vpk upload github --channel win-x64 @common
+          if ($LASTEXITCODE -ne 0) { throw "Upload of win-x64 failed" }
+          dotnet vpk upload github --channel win-arm64 --merge @common
+          if ($LASTEXITCODE -ne 0) { throw "Upload of win-arm64 failed" }
+
+          # Install instructions on top, then GitHub's generated list of changes.
+          $changes = gh api --method POST "repos/$env:GITHUB_REPOSITORY/releases/generate-notes" -f tag_name=$tag --jq .body
+          $notes = (Get-Content artifacts/release-notes.md -Raw) + "`n" + $changes
+          $notes | Set-Content artifacts/release-body.md -Encoding utf8
+          gh release edit $tag --repo $env:GITHUB_REPOSITORY --notes-file artifacts/release-body.md

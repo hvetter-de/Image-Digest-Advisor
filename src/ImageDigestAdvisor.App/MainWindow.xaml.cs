@@ -26,6 +26,8 @@ public sealed partial class MainWindow : Window
         Nav.SelectedItem = AnalyzeItem;
     }
 
+    public Services.UpdateService Updates => App.Current.Updates;
+
     /// <summary>Lets pages switch to another page (e.g. "Add account" link on a rate-limit hint).</summary>
     public void NavigateTo(string tag)
     {

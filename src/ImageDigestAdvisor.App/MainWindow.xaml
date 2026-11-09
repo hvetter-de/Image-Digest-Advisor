@@ -12,6 +12,7 @@
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
@@ -22,9 +23,22 @@
             </StackPanel>
         </Grid>
 
+        <InfoBar
+            Grid.Row="1"
+            Margin="16,0,16,8"
+            Severity="Success"
+            IsClosable="True"
+            Title="Update ready"
+            Message="{x:Bind Updates.StatusText, Mode=OneWay}"
+            IsOpen="{x:Bind Updates.IsReadyToInstall, Mode=OneWay}">
+            <InfoBar.ActionButton>
+                <Button Content="Restart and update" Command="{x:Bind Updates.RestartAndUpdateCommand}" />
+            </InfoBar.ActionButton>
+        </InfoBar>
+
         <NavigationView
             x:Name="Nav"
-            Grid.Row="1"
+            Grid.Row="2"
             PaneDisplayMode="Top"
             IsBackButtonVisible="Collapsed"
             IsSettingsVisible="True"

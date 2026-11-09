@@ -5,7 +5,8 @@
 ![Image Digest Advisor showing an outdated image and the recommended update](docs/images/check-result.png)
 
 - [For users](#for-users): install, check an image, read the result, registry accounts
-- [For developers](#for-developers): architecture, build, packaging
+- [For developers](#for-developers): architecture, build, releases
+- [License](#license): free software under GPL-3.0
 
 ---
 
@@ -30,13 +31,27 @@ The app works with Docker Hub, Microsoft Container Registry (`mcr.microsoft.com`
 
 **Requirements:** Windows 10 version 1809 or later, or Windows 11, on x64 or ARM64. You **don't need Docker**, and you don't need to install a separate runtime.
 
-1. Get the zip file for your PC (x64 or ARM64) from the [Releases](https://github.com/hvetter-de/Image-Digest-Advisor/releases) page, or from whoever shared the app with you.
-2. Unzip it to a folder, e.g. `C:\Tools\ImageDigestAdvisor`.
-3. Start `ImageDigestAdvisor.exe`.
+1. Open the [latest release](https://github.com/hvetter-de/Image-Digest-Advisor/releases/latest) and download the setup for your PC:
+   - **`ImageDigestAdvisor-win-x64-Setup.exe`** for most Windows PCs (Intel/AMD)
+   - **`ImageDigestAdvisor-win-arm64-Setup.exe`** for ARM devices (e.g. Snapdragon laptops)
+2. Run the setup. It installs for your user only, so **no admin rights** are needed, and it adds a Start menu and desktop shortcut.
 
-If Windows shows *"Windows protected your PC"*, click **More info › Run anyway**. This appears because the app isn't signed yet.
+If Windows shows *"Windows protected your PC"*, click **More info › Run anyway**. This appears because the app isn't code-signed yet.
+
+**Uninstall** via *Windows Settings › Apps › Installed apps › Image Digest Advisor*.
+
+**Without installing:** download the `Portable.zip` for your PC instead, unzip it anywhere and start `ImageDigestAdvisor.exe`.
 
 A Microsoft Store version is planned.
+
+### Updates
+
+The app keeps itself up to date:
+
+- When it starts, it checks GitHub for a new release and **downloads it in the background**.
+- A green bar then says **Update ready**. Click **Restart and update**, or simply keep working: the update is installed the next time you start the app.
+- Updates are small, because usually only the changed parts are downloaded.
+- You can check manually or turn off the automatic check under **Settings › Updates**.
 
 ## Check an image
 
@@ -104,9 +119,9 @@ Click **Test connection** before saving.
 
 ## Settings, data and privacy
 
-- **Cache:** image information is stored by digest in `%LOCALAPPDATA%\ImageDigestAdvisor\cache`. That content can never change, so checking the same image again is fast and doesn't use up Docker Hub's limit. You can clear it under **Settings › Clear cache**.
-- **Preferences** (platform, age limit, recent inputs) are stored in `%LOCALAPPDATA%\ImageDigestAdvisor\settings.json`.
-- **Network:** the app only connects to the registries you check, plus `hub.docker.com` for Docker Hub tag lists. Credentials are only sent to the registry they belong to. **No telemetry** is collected.
+- **Cache:** image information is stored by digest in `%LOCALAPPDATA%\ImageDigestAdvisor.Data\cache`. That content can never change, so checking the same image again is fast and doesn't use up Docker Hub's limit. You can clear it under **Settings › Clear cache**.
+- **Preferences** (platform, age limit, recent inputs, automatic update check) are stored in `%LOCALAPPDATA%\ImageDigestAdvisor.Data\settings.json`. They survive updates. Delete the folder to remove them after uninstalling.
+- **Network:** the app only connects to the registries you check, `hub.docker.com` for Docker Hub tag lists, and `github.com` to look for updates. Credentials are only sent to the registry they belong to. **No telemetry** is collected.
 
 ## Troubleshooting
 
@@ -118,7 +133,8 @@ Click **Test connection** before saving.
 | *"Could not determine"*, or no suggestions | Enter the tag as well: `repo:tag@sha256:…`. |
 | *"The tag … was guessed"* | The digest no longer has a tag, so the app used the version stored inside the image. Add the tag to your input for exact results. |
 | *"not available for linux/arm64"* | The suggested image doesn't support your platform. Choose another version. |
-| The app doesn't start | Send `%LOCALAPPDATA%\ImageDigestAdvisor\crash.log` to the maintainer. |
+| *"Update check failed"* | Usually no internet connection, or GitHub is blocked by a proxy. The app keeps working; try again later under **Settings › Updates**. |
+| The app doesn't start | Send `%LOCALAPPDATA%\ImageDigestAdvisor.Data\crash.log` to the maintainer, or [open an issue](https://github.com/hvetter-de/Image-Digest-Advisor/issues). |
 
 ---
 
@@ -131,10 +147,12 @@ Windows desktop app built with **WinUI 3 / Windows App SDK** on **.NET 10**, MVV
 | Project | Purpose |
 |---|---|
 | `src/ImageDigestAdvisor.Core` | All logic: reference parsing, OCI registry client (token auth, caching), Docker Hub tag API, credential chain, analyzer. No UI dependency. |
-| `src/ImageDigestAdvisor.App` | WinUI 3 app (MVVM with CommunityToolkit.Mvvm). Single-project MSIX, also builds unpackaged. |
+| `src/ImageDigestAdvisor.App` | WinUI 3 app (MVVM with CommunityToolkit.Mvvm). Single-project MSIX, also builds unpackaged. Velopack for installer and updates. |
 | `tests/ImageDigestAdvisor.Core.Tests` | MSTest tests against an in-memory fake registry. They make no network calls. |
+| `build/pack.ps1` | Publishes the app and creates the Velopack packages (Setup.exe, portable zip, update packages). |
+| `.github/workflows` | `ci.yml` builds and tests every push and PR. `release.yml` publishes releases from version tags. |
 
-Entry points: `DigestAnalyzer` (the analysis), `RegistryClient` (OCI Distribution API), `ImageDigestAdvisorServices` (composition root), `AnalyzePage` (main UI).
+Entry points: `DigestAnalyzer` (the analysis), `RegistryClient` (OCI Distribution API), `ImageDigestAdvisorServices` (composition root), `AnalyzePage` (main UI), `Program` and `UpdateService` (Velopack startup and updates).
 
 ## How an analysis works
 
@@ -159,7 +177,7 @@ Docker Hub limits anonymous pulls per IP. The app keeps usage low:
 
 - Tags are resolved with HEAD requests, which don't count against the limit.
 - Tag→digest lists come from the Docker Hub web API.
-- Manifests and configs are cached on disk by digest, forever (content-addressed), under `%LOCALAPPDATA%\ImageDigestAdvisor\cache`. Content is verified against its digest on read.
+- Manifests and configs are cached on disk by digest, forever (content-addressed), under `%LOCALAPPDATA%\ImageDigestAdvisor.Data\cache`. Content is verified against its digest on read.
 - The remaining limit (`ratelimit-remaining` header) is shown after each Docker Hub check.
 
 ## Build and run
@@ -176,16 +194,50 @@ Unpackaged builds go to `bin\unpackaged\` and `obj\unpackaged\`, separate from p
 
 In Visual Studio, choose the launch profile **ImageDigestAdvisor (Package)** (MSIX) or **(Unpackaged)**. The unpackaged profile needs the build property `Unpackaged=true`.
 
-## Distribute
+## Releases and automatic updates
 
-**Zip (no installer, no certificate):**
+Releases are built by GitHub Actions ([`release.yml`](.github/workflows/release.yml)) with [Velopack](https://velopack.io). To publish a version, push a tag:
 
 ```powershell
-dotnet publish src\ImageDigestAdvisor.App -c Release -p:Platform=x64 -p:Unpackaged=true
-# zip src\ImageDigestAdvisor.App\bin\publish\x64\ and share it; run ImageDigestAdvisor.exe
+git tag v1.2.0
+git push origin v1.2.0
 ```
 
-Use `-p:Platform=ARM64` for ARM devices. The output is self-contained and includes the .NET and Windows App SDK runtimes.
+The workflow then:
+1. runs the tests,
+2. builds self-contained x64 and ARM64 apps with the version from the tag,
+3. packs them with Velopack, creating delta updates against the previous release,
+4. publishes the GitHub release.
+
+Release assets per architecture:
+
+| File | Purpose |
+|---|---|
+| `ImageDigestAdvisor-win-<arch>-Setup.exe` | Installer for users (per user, no admin rights) |
+| `ImageDigestAdvisor-win-<arch>-Portable.zip` | Portable version, which can also update itself |
+| `*-full.nupkg`, `*-delta.nupkg`, `releases.win-<arch>.json`, `RELEASES-win-<arch>`, `assets.win-<arch>.json` | Used by the updater. Don't delete them from a release. |
+
+- **Pre-releases:** tags with a suffix (`v1.3.0-beta.1`) become GitHub pre-releases, and installed apps don't update to them.
+- **Test build:** *Actions › Release › Run workflow* builds the packages as a workflow artifact without publishing anything.
+
+**How the app updates:** `Program.Main` calls `VelopackApp.Build().Run()` before WinUI starts. That's why `DISABLE_XAML_GENERATED_MAIN` is defined. `UpdateService` checks GitHub Releases via `GithubSource`, downloads in the background and offers *Restart and update*. A downloaded update is otherwise applied on the next start. Only installed apps (Setup.exe or the Velopack portable zip) update; dev and MSIX builds don't.
+
+**Velopack and app data:** Setup.exe installs to `%LOCALAPPDATA%\ImageDigestAdvisor` and replaces it on updates. User data therefore lives in `%LOCALAPPDATA%\ImageDigestAdvisor.Data` (`AppPaths`).
+
+**Build packages locally:**
+
+```powershell
+dotnet tool restore                      # installs vpk (pinned in dotnet-tools.json)
+./build/pack.ps1 -Version 0.9.0 -Runtime win-x64 -OutputDir artifacts/releases
+```
+
+**Test the update flow locally:**
+
+1. Pack two versions into the same output folder.
+2. Install the older one with its `Setup.exe` (keep a copy before packing the newer one).
+3. Start the installed app with `IMAGEDIGESTADVISOR_UPDATE_SOURCE=<full path to artifacts\releases>`. The app then reads updates from that folder instead of GitHub.
+
+Uninstall the test with `%LOCALAPPDATA%\ImageDigestAdvisor\Update.exe uninstall --silent`.
 
 **Microsoft Store (MSIX):**
 
@@ -206,4 +258,20 @@ The package is unsigned. To sideload it, sign it with a certificate trusted on t
 
 - Docker Hub's web API returns only the 1,000 most recently updated tags anonymously. For older digests, the tag is found through the version the image reports about itself, such as `NGINX_VERSION` or the `org.opencontainers.image.version` label.
 - On registries without a digest-aware tag API, a bare digest (no tag) is matched by probing up to 150 tags with HEAD requests. Entering `repo:tag@digest` is always exact.
-- Unhandled exceptions are written to `%LOCALAPPDATA%\ImageDigestAdvisor\crash.log`.
+- Unhandled exceptions are written to `%LOCALAPPDATA%\ImageDigestAdvisor.Data\crash.log`.
+- Installers and executables are not code-signed yet, so Windows SmartScreen warns on first start. Velopack can sign during packing (`--signParams` or `--azureTrustedSignFile`) once a certificate is available.
+
+---
+
+# License
+
+Image Digest Advisor is free software: you can redistribute it and/or modify it under the terms of the **GNU General Public License v3.0 or later** (GPL-3.0-or-later). See [LICENSE](LICENSE).
+
+In short:
+- **Allowed:** anyone may use, study, change and share the app and its code.
+- **Required:** every distributed copy or modified version must also be released under the GPL with its complete source code, so it can never become closed source.
+- **No warranty:** the software comes without any warranty.
+
+Contributions are welcome via issues and pull requests. By contributing, you agree that your contribution is licensed under the same license.
+
+Third-party components keep their own licenses: Windows App SDK, CommunityToolkit.Mvvm and Velopack (all MIT). All are compatible with the GPL.

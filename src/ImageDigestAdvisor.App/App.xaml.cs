@@ -31,20 +31,28 @@ public partial class App : Application
 
     public Window MainWindow => _window!;
 
+    public UpdateService Updates { get; private set; } = null!;
+
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
+        Updates = new UpdateService();
         _window = new MainWindow();
         _window.Activate();
+
+        if (Settings.AutoCheckUpdates && Updates.CanCheck)
+        {
+            // Give the UI a moment to settle, then check and download in the background.
+            _ = Task.Delay(TimeSpan.FromSeconds(3)).ContinueWith(_ => Updates.CheckAsync(), TaskScheduler.FromCurrentSynchronizationContext());
+        }
     }
 
-    /// <summary>Writes %LOCALAPPDATA%\ImageDigestAdvisor\crash.log so failures on other machines can be diagnosed.</summary>
+    /// <summary>Writes crash.log to the data folder so failures on other machines can be diagnosed.</summary>
     private static void WriteCrashLog(Exception? exception)
     {
         try
         {
-            var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ImageDigestAdvisor");
-            Directory.CreateDirectory(dir);
-            File.AppendAllText(Path.Combine(dir, "crash.log"), $"{DateTimeOffset.Now:O}{Environment.NewLine}{exception}{Environment.NewLine}{Environment.NewLine}");
+            Directory.CreateDirectory(AppPaths.DataDirectory);
+            File.AppendAllText(AppPaths.CrashLog, $"{DateTimeOffset.Now:O}{Environment.NewLine}{exception}{Environment.NewLine}{Environment.NewLine}");
         }
         catch (IOException)
         {

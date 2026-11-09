@@ -15,6 +15,8 @@ public sealed partial class SettingsPage : Page
         InitializeComponent();
     }
 
+    public Services.UpdateService Updates => App.Current.Updates;
+
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
         base.OnNavigatedTo(e);
@@ -25,8 +27,16 @@ public sealed partial class SettingsPage : Page
             ? $"Docker configuration found at {configPath}. Logins from 'docker login' are used automatically."
             : "No Docker configuration found. That's fine: Docker is not required. Add accounts under Registry accounts if needed.";
 
-        var version = Assembly.GetExecutingAssembly().GetName().Version;
-        VersionInfo.Text = $"Image Digest Advisor {version?.ToString(3)}";
+        VersionInfo.Text = $"Image Digest Advisor {Updates.CurrentVersion}";
+        AutoUpdateToggle.IsOn = App.Current.Settings.AutoCheckUpdates;
+    }
+
+    private void AutoUpdateToggle_Toggled(object sender, RoutedEventArgs e)
+    {
+        var settings = App.Current.Settings;
+        if (settings.AutoCheckUpdates == AutoUpdateToggle.IsOn) return;
+        settings.AutoCheckUpdates = AutoUpdateToggle.IsOn;
+        settings.Save();
     }
 
     private void RefreshCacheInfo()
