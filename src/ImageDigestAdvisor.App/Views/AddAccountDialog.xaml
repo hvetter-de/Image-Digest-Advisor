@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ContentDialog
+    x:Class="ImageDigestAdvisor.App.Views.AddAccountDialog"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="Add registry account"
+    PrimaryButtonText="Save"
+    CloseButtonText="Cancel"
+    DefaultButton="Primary"
+    PrimaryButtonClick="Save_Click"
+    Style="{StaticResource DefaultContentDialogStyle}">
+
+    <StackPanel Spacing="12" MinWidth="420">
+        <ComboBox x:Name="RegistryBox" Header="Registry" IsEditable="True" HorizontalAlignment="Stretch"
+                  PlaceholderText="docker.io or e.g. myregistry.azurecr.io"
+                  TextSubmitted="RegistryBox_TextSubmitted" SelectionChanged="RegistryBox_SelectionChanged">
+            <x:String>docker.io</x:String>
+            <x:String>ghcr.io</x:String>
+            <x:String>quay.io</x:String>
+        </ComboBox>
+        <TextBlock x:Name="HintText" Style="{StaticResource CaptionTextBlockStyle}" TextWrapping="Wrap"
+                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+        <TextBox x:Name="UserBox" Header="Username" />
+        <PasswordBox x:Name="SecretBox" Header="Access token (or password)" />
+
+        <StackPanel Orientation="Horizontal" Spacing="12">
+            <Button x:Name="TestButton" Content="Test connection" Click="Test_Click" />
+            <ProgressRing x:Name="TestProgress" IsActive="False" Width="20" Height="20" />
+        </StackPanel>
+        <TextBlock x:Name="ResultText" TextWrapping="Wrap" />
+    </StackPanel>
+</ContentDialog>

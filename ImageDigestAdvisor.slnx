@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/ImageDigestAdvisor.App/ImageDigestAdvisor.App.csproj">
+      <Platform Project="x64" />
+    </Project>
+    <Project Path="src/ImageDigestAdvisor.Core/ImageDigestAdvisor.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/ImageDigestAdvisor.Core.Tests/ImageDigestAdvisor.Core.Tests.csproj" />
+  </Folder>
+</Solution>

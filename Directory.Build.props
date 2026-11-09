@@ -1,0 +1,21 @@
+<Project>
+  <PropertyGroup>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <Company>daenet</Company>
+    <Product>Image Digest Advisor</Product>
+    <!-- Never compile generated files of the other build mode (see below). -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);bin/**;obj/**</DefaultItemExcludes>
+  </PropertyGroup>
+
+  <!--
+    Packaged (MSIX) and unpackaged builds produce different resources.pri files (the unpackaged one
+    must contain the WinUI theme resources). Separate folders keep incremental builds from mixing them.
+  -->
+  <PropertyGroup Condition="'$(Unpackaged)' == 'true'">
+    <BaseIntermediateOutputPath>obj\unpackaged\</BaseIntermediateOutputPath>
+    <BaseOutputPath>bin\unpackaged\</BaseOutputPath>
+  </PropertyGroup>
+</Project>

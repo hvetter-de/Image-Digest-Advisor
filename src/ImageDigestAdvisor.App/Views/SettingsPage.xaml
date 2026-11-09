@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="ImageDigestAdvisor.App.Views.SettingsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <ScrollViewer>
+        <StackPanel Padding="24,16,24,32" Spacing="16" MaxWidth="1000" HorizontalAlignment="Left">
+            <TextBlock Text="Settings" Style="{StaticResource TitleTextBlockStyle}" />
+
+            <Border Style="{StaticResource CardStyle}">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="Cache" Style="{StaticResource SubtitleTextBlockStyle}" />
+                    <TextBlock TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               Text="Manifests and image configs are cached by digest. Their content can never change, so repeated checks don't use up Docker Hub's rate limit. Tag lists are cached in memory for 10 minutes." />
+                    <TextBlock x:Name="CacheInfo" IsTextSelectionEnabled="True" TextWrapping="Wrap" FontFamily="{StaticResource MonoFont}" FontSize="12" />
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button Content="Clear cache" Click="ClearCache_Click" />
+                        <Button Content="Open folder" Click="OpenCache_Click" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource CardStyle}">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="Docker" Style="{StaticResource SubtitleTextBlockStyle}" />
+                    <TextBlock x:Name="DockerInfo" TextWrapping="Wrap" />
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource CardStyle}">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="About" Style="{StaticResource SubtitleTextBlockStyle}" />
+                    <TextBlock x:Name="VersionInfo" />
+                    <TextBlock TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               Text="Privacy: The app only connects to the container registries you check (and hub.docker.com for Docker Hub tag lists). Credentials are stored locally in Windows Credential Manager and are only sent to the registry they belong to. No telemetry is collected." />
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</Page>

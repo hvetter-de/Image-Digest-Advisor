@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>ImageDigestAdvisor.Core</RootNamespace>
+    <!-- Required by LibraryImport source generator (Windows Credential Manager interop). -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="ImageDigestAdvisor.Core.Tests" />
+  </ItemGroup>
+
+</Project>

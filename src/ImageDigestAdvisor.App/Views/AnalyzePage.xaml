@@ -1,0 +1,222 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="ImageDigestAdvisor.App.Views.AnalyzePage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vm="using:ImageDigestAdvisor.App.ViewModels"
+    xmlns:local="using:ImageDigestAdvisor.App.Views">
+
+    <Page.Resources>
+        <DataTemplate x:Key="PropertyRowTemplate" x:DataType="vm:PropertyRow">
+            <Grid ColumnSpacing="12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="170" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="{x:Bind Name}" Style="{StaticResource PropertyNameStyle}" />
+                <TextBlock Grid.Column="1" Text="{x:Bind Value}" Style="{StaticResource PropertyValueStyle}"
+                           FontFamily="{x:Bind local:AnalyzePage.MonoFontIf(Monospace)}" Visibility="{x:Bind HasNoLink}" />
+                <HyperlinkButton Grid.Column="1" Content="{x:Bind Value}" NavigateUri="{x:Bind LinkUri}"
+                                 Padding="0" Margin="0,-4,0,4" Visibility="{x:Bind HasLink}" />
+            </Grid>
+        </DataTemplate>
+
+        <DataTemplate x:Key="ImageCardTemplate" x:DataType="vm:ImageCardViewModel">
+            <Border Style="{StaticResource CardStyle}" Margin="0,0,0,12">
+                <StackPanel Spacing="10">
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="{x:Bind Title}" Style="{StaticResource SubtitleTextBlockStyle}" TextWrapping="Wrap" />
+                            <TextBlock Text="{x:Bind Subtitle}" Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                        </StackPanel>
+                        <Border Grid.Column="1" VerticalAlignment="Top" CornerRadius="10" Padding="10,3"
+                                Background="{ThemeResource AccentFillColorDefaultBrush}" Visibility="{x:Bind IsRecommended}">
+                            <TextBlock Text="Recommended" Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
+                        </Border>
+                    </Grid>
+
+                    <Grid ColumnSpacing="8" Padding="10,8" CornerRadius="4"
+                          Background="{ThemeResource SubtleFillColorSecondaryBrush}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="{x:Bind PinnedReference}" FontFamily="{StaticResource MonoFont}" FontSize="13"
+                                   IsTextSelectionEnabled="True" TextWrapping="Wrap" VerticalAlignment="Center" />
+                        <Button Grid.Column="1" Command="{x:Bind CopyCommand}" VerticalAlignment="Center"
+                                ToolTipService.ToolTip="Copy the pinned reference" AutomationProperties.Name="Copy reference">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <FontIcon Glyph="&#xE8C8;" FontSize="14" />
+                                <TextBlock Text="{x:Bind CopyText, Mode=OneWay}" />
+                            </StackPanel>
+                        </Button>
+                    </Grid>
+
+                    <ItemsControl ItemsSource="{x:Bind Properties}" ItemTemplate="{StaticResource PropertyRowTemplate}" />
+
+                    <Expander Header="{x:Bind LabelsHeader}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                              Visibility="{x:Bind HasLabels}">
+                        <ItemsControl ItemsSource="{x:Bind Labels}" ItemTemplate="{StaticResource PropertyRowTemplate}" />
+                    </Expander>
+                </StackPanel>
+            </Border>
+        </DataTemplate>
+    </Page.Resources>
+
+    <ScrollViewer>
+        <StackPanel Padding="24,16,24,32" Spacing="16" MaxWidth="1400">
+
+            <!-- Input -->
+            <StackPanel Spacing="8">
+                <TextBlock Text="Is my image up to date?" Style="{StaticResource TitleTextBlockStyle}" />
+                <TextBlock Style="{StaticResource BodyTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"
+                           Text="Paste an image reference with digest, e.g. nginx:1.27@sha256:… — a tag alone, a Dockerfile FROM line or a docker pull command work too." />
+            </StackPanel>
+
+            <Grid ColumnSpacing="8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <AutoSuggestBox x:Name="InputBox"
+                                Text="{x:Bind ViewModel.Input, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                PlaceholderText="registry/repository:tag@sha256:digest"
+                                FontFamily="{StaticResource MonoFont}"
+                                QueryIcon="Find"
+                                ItemsSource="{x:Bind ViewModel.RecentInputs}"
+                                GotFocus="InputBox_GotFocus"
+                                QuerySubmitted="InputBox_QuerySubmitted" />
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                    <Button Style="{StaticResource AccentButtonStyle}" Command="{x:Bind ViewModel.AnalyzeCommand}"
+                            Visibility="{x:Bind ViewModel.IsIdle, Mode=OneWay}" MinWidth="110" AutomationProperties.Name="Check">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <FontIcon Glyph="&#xE721;" FontSize="14" />
+                            <TextBlock Text="Check" />
+                        </StackPanel>
+                    </Button>
+                    <Button Command="{x:Bind ViewModel.AnalyzeCancelCommand}" Visibility="{x:Bind ViewModel.IsBusy, Mode=OneWay}" MinWidth="110"
+                            AutomationProperties.Name="Cancel">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <ProgressRing IsActive="True" Width="16" Height="16" />
+                            <TextBlock Text="Cancel" />
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+            </Grid>
+
+            <StackPanel Orientation="Horizontal" Spacing="16">
+                <ComboBox Header="Platform" MinWidth="180"
+                          ItemsSource="{x:Bind ViewModel.Platforms}"
+                          SelectedItem="{x:Bind ViewModel.PlatformText, Mode=TwoWay}" />
+                <NumberBox Header="Flag images older than (days, 0 = off)" Minimum="0" Maximum="3650" SmallChange="30"
+                           SpinButtonPlacementMode="Compact" MinWidth="240"
+                           Value="{x:Bind ViewModel.MaxAgeDays, Mode=TwoWay}" />
+            </StackPanel>
+
+            <!-- Errors -->
+            <InfoBar IsOpen="{x:Bind ViewModel.HasError, Mode=OneWay}" IsClosable="False" Severity="Error"
+                     Title="Could not check the image" Message="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}">
+                <InfoBar.ActionButton>
+                    <Button Content="Add registry account" Click="AddAccount_Click"
+                            Visibility="{x:Bind ViewModel.ErrorSuggestsAccount, Mode=OneWay}" />
+                </InfoBar.ActionButton>
+            </InfoBar>
+
+            <!-- Welcome -->
+            <Border Style="{StaticResource CardStyle}" Visibility="{x:Bind ViewModel.ShowWelcome, Mode=OneWay}">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="How it works" Style="{StaticResource SubtitleTextBlockStyle}" />
+                    <TextBlock Style="{StaticResource BodyTextBlockStyle}" TextWrapping="Wrap">
+                        <Run Text="• Compares your digest with the image the same tag points to today." /><LineBreak />
+                        <Run Text="• Looks for newer patch, minor and major versions in the same variant (e.g. -alpine stays -alpine)." /><LineBreak />
+                        <Run Text="• Flags images older than the age threshold." /><LineBreak />
+                        <Run Text="• Works without Docker. Public images need no login; add an account to raise Docker Hub's rate limit or to check private images." />
+                    </TextBlock>
+                    <TextBlock Text="Try for example:" Style="{StaticResource BodyStrongTextBlockStyle}" Margin="0,8,0,0" />
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <HyperlinkButton Content="nginx:1.26.0" Click="Example_Click" />
+                        <HyperlinkButton Content="mcr.microsoft.com/dotnet/aspnet:8.0" Click="Example_Click" />
+                        <HyperlinkButton Content="ghcr.io/home-assistant/home-assistant:2024.1.0" Click="Example_Click" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- Result -->
+            <StackPanel Spacing="12" Visibility="{x:Bind ViewModel.HasResult, Mode=OneWay}">
+                <InfoBar IsOpen="True" IsClosable="False"
+                         Severity="{x:Bind ViewModel.Result.StatusSeverity, Mode=OneWay}"
+                         Title="{x:Bind ViewModel.Result.StatusTitle, Mode=OneWay}"
+                         Message="{x:Bind ViewModel.Result.StatusMessage, Mode=OneWay}" />
+
+                <Border Style="{StaticResource CardStyle}">
+                    <StackPanel Spacing="6">
+                        <ItemsControl ItemsSource="{x:Bind ViewModel.Result.Findings, Mode=OneWay}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:FindingRow">
+                                    <Grid ColumnSpacing="10" Margin="0,3">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <FontIcon Glyph="{x:Bind Glyph}" Foreground="{x:Bind Brush}" FontSize="16" VerticalAlignment="Top" Margin="0,2,0,0" />
+                                        <TextBlock Grid.Column="1" Text="{x:Bind Text}" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <ItemsControl ItemsSource="{x:Bind ViewModel.Result.Warnings, Mode=OneWay}"
+                                      Visibility="{x:Bind ViewModel.Result.HasWarnings, Mode=OneWay}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="x:String">
+                                    <TextBlock Text="{x:Bind}" Style="{StaticResource CaptionTextBlockStyle}" TextWrapping="Wrap"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" Margin="26,2,0,0" />
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </Border>
+
+                <Grid x:Name="CardsGrid" ColumnSpacing="16" RowSpacing="0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <StackPanel x:Name="RequestedColumn" Spacing="8">
+                        <TextBlock Text="Requested" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                        <ContentControl Content="{x:Bind ViewModel.Result.Requested, Mode=OneWay}"
+                                        ContentTemplate="{StaticResource ImageCardTemplate}"
+                                        HorizontalContentAlignment="Stretch" HorizontalAlignment="Stretch" />
+                    </StackPanel>
+
+                    <StackPanel x:Name="SuggestedColumn" Grid.Column="1" Spacing="8">
+                        <TextBlock Text="Suggested" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                        <Border Style="{StaticResource CardStyle}" Visibility="{x:Bind ViewModel.Result.HasNoSuggestions, Mode=OneWay}">
+                            <TextBlock Text="No newer image found – nothing to update." TextWrapping="Wrap" />
+                        </Border>
+                        <ItemsControl ItemsSource="{x:Bind ViewModel.Result.Suggestions, Mode=OneWay}"
+                                      ItemTemplate="{StaticResource ImageCardTemplate}" />
+                    </StackPanel>
+                </Grid>
+
+                <StackPanel Orientation="Horizontal" Spacing="8" Visibility="{x:Bind ViewModel.Result.HasRateLimit, Mode=OneWay}">
+                    <FontIcon Glyph="&#xE946;" FontSize="14" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    <TextBlock Text="{x:Bind ViewModel.Result.RateLimitText, Mode=OneWay}" Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" VerticalAlignment="Center" />
+                    <HyperlinkButton Content="Add Docker Hub account" Click="AddAccount_Click" Padding="4,0"
+                                     Visibility="{x:Bind ViewModel.Result.ShowAddAccountHint, Mode=OneWay}" />
+                </StackPanel>
+            </StackPanel>
+        </StackPanel>
+    </ScrollViewer>
+</Page>

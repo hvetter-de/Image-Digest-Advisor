@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "ImageDigestAdvisor (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "ImageDigestAdvisor (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}
