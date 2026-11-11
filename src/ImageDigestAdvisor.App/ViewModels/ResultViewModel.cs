@@ -1,4 +1,6 @@
+using CommunityToolkit.Mvvm.ComponentModel;
 using ImageDigestAdvisor.Core.Analysis;
+using ImageDigestAdvisor.Core.Security;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
@@ -7,8 +9,102 @@ namespace ImageDigestAdvisor.App.ViewModels;
 
 public sealed record FindingRow(string Glyph, Brush Brush, string Text);
 
-public sealed class ResultViewModel
+public sealed partial class ResultViewModel : ObservableObject
 {
+    /// <summary>One line under the findings, e.g. "Your image has 3 vulnerabilities with a fix. The recommended update fixes 3."</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasSecuritySummary))]
+    public partial string? SecuritySummary { get; set; }
+
+    public bool HasSecuritySummary => SecuritySummary is not null;
+
+    private IEnumerable<ImageCardViewModel> AllCards => Suggestions.Prepend(Requested);
+
+    /// <summary>The check is off: let the user's card offer it.</summary>
+    public void OfferVulnerabilityCheck()
+    {
+        foreach (var card in AllCards) card.ShowSecurityOffer();
+    }
+
+    /// <summary>Checks all cards for known vulnerabilities; cards update as their results arrive.</summary>
+    public async Task ScanVulnerabilitiesAsync(VulnerabilityScanner scanner, CancellationToken ct)
+    {
+        SecuritySummary = null;
+        foreach (var card in AllCards) card.BeginSecurityScan();
+
+        var requestedTask = Task.Run(() => scanner.ScanAsync(Requested.Details, ct), ct);
+        var suggestionTasks = Suggestions.Select(s => (Card: s, Task: Task.Run(() => scanner.ScanAsync(s.Details, ct), ct))).ToList();
+
+        try
+        {
+            var baseline = await requestedTask;
+            Requested.SetSecurityReport(baseline, null);
+            foreach (var (card, task) in suggestionTasks)
+            {
+                card.SetSecurityReport(await task, baseline);
+            }
+            UpdateSecuritySummary(baseline);
+        }
+        catch (OperationCanceledException)
+        {
+            foreach (var card in AllCards) card.CancelSecurityScan();
+        }
+    }
+
+    private void UpdateSecuritySummary(VulnerabilityReport baseline)
+    {
+        if (!baseline.IsCompleted || baseline.FixableCount == 0)
+        {
+            SecuritySummary = null;
+            return;
+        }
+
+        var fixable = baseline.FixableCount;
+        var text = fixable == 1
+            ? "Your image has 1 known vulnerability with a fix available."
+            : $"Your image has {fixable} known vulnerabilities with a fix available.";
+
+        static int FixesFixable(ImageCardViewModel s) => s.FixedVulnerabilities.Count(f => f.Category == VulnerabilityCategory.Fixable);
+
+        var best = Suggestions.FirstOrDefault(s => s.IsRecommended) is { } recommended && FixesFixable(recommended) > 0
+            ? recommended
+            : Suggestions.OrderByDescending(FixesFixable).FirstOrDefault(s => FixesFixable(s) > 0);
+        if (best is not null)
+        {
+            var name = best.IsRecommended ? "The recommended update" : $"'{best.Title}'";
+            var count = FixesFixable(best);
+            var total = best.FixedVulnerabilities.Count;
+            text += count == fixable ? $" {name} fixes all of them" : $" {name} fixes {count} of them";
+            // A newer base OS can also remove vulnerabilities that had no fix in the old one.
+            text += total > count ? $", and {total - count} more without a fix in your image's packages." : ".";
+        }
+        else
+        {
+            // Typical right after a distribution security update: the packages are fixed, the image isn't rebuilt yet.
+            text +=$" No newer image includes the {(fixable == 1 ? "fix" : "fixes")} yet. "
+                    + $"{(fixable == 1 ? "It's" : "They're")} available as package updates from the distribution, so you can wait for the publisher to rebuild the image, "
+                    + $"or upgrade the packages in your own Dockerfile{UpgradeHint(baseline)}.";
+        }
+
+        SecuritySummary = text;
+    }
+
+    /// <summary>E.g. " (RUN apk upgrade --no-cache)" when all fixable packages are Alpine packages.</summary>
+    private static string UpgradeHint(VulnerabilityReport report)
+    {
+        var families = report.Findings
+            .Where(f => f.Category == VulnerabilityCategory.Fixable)
+            .Select(f => f.Ecosystem.Split(':')[0])
+            .Distinct()
+            .ToList();
+        return families switch
+        {
+            ["Alpine"] => " (RUN apk upgrade --no-cache)",
+            ["Debian"] or ["Ubuntu"] => " (RUN apt-get update && apt-get upgrade -y)",
+            _ => string.Empty,
+        };
+    }
+
     public ResultViewModel(AnalysisResult result)
     {
         var now = result.AnalyzedAt;

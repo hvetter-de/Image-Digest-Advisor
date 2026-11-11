@@ -31,6 +31,15 @@
 
             <Border Style="{StaticResource CardStyle}">
                 <StackPanel Spacing="8">
+                    <TextBlock Text="Known vulnerabilities" Style="{StaticResource SubtitleTextBlockStyle}" />
+                    <TextBlock TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                               Text="Checks each image for known vulnerabilities (CVEs). The app reads the SBOM (list of installed packages) that the registry publishes with the image and looks the packages up in the free osv.dev database. Only package names and versions are sent to osv.dev, never image names or credentials. Results are cached for 24 hours. Images without a published SBOM, such as Microsoft Container Registry images, can't be checked." />
+                    <ToggleSwitch x:Name="VulnerabilityToggle" Header="Check images for known vulnerabilities" Toggled="VulnerabilityToggle_Toggled" />
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource CardStyle}">
+                <StackPanel Spacing="8">
                     <TextBlock Text="Cache" Style="{StaticResource SubtitleTextBlockStyle}" />
                     <TextBlock TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                Text="Manifests and image configs are cached by digest. Their content can never change, so repeated checks don't use up Docker Hub's rate limit. Tag lists are cached in memory for 10 minutes." />
@@ -54,7 +63,7 @@
                     <TextBlock Text="About" Style="{StaticResource SubtitleTextBlockStyle}" />
                     <TextBlock x:Name="VersionInfo" />
                     <TextBlock TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                               Text="Privacy: The app only connects to the container registries you check (and hub.docker.com for Docker Hub tag lists), and to github.com to look for updates. Credentials are stored locally in Windows Credential Manager and are only sent to the registry they belong to. No telemetry is collected." />
+                               Text="Privacy: The app only connects to the container registries you check (and hub.docker.com for Docker Hub tag lists), and to github.com to look for updates. If you turn on the vulnerability check, package names and versions from the image's SBOM are sent to osv.dev. Credentials are stored locally in Windows Credential Manager and are only sent to the registry they belong to. No telemetry is collected." />
                     <TextBlock TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                Text="Free software under the GNU General Public License v3.0 or later." />
                     <HyperlinkButton Content="Source code and releases on GitHub" NavigateUri="https://github.com/hvetter-de/Image-Digest-Advisor" Padding="0" />

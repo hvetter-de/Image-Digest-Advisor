@@ -52,6 +52,40 @@ public sealed partial class AnalyzePage : Page
         ViewModel.AnalyzeCommand.Execute(null);
     }
 
+    private async void SecurityChip_Click(object sender, RoutedEventArgs e)
+    {
+        if (((FrameworkElement)sender).DataContext is not ImageCardViewModel card || ViewModel.Result is not { } result) return;
+
+        if (card.SecurityState == SecurityChipState.Offer)
+        {
+            var enable = new ContentDialog
+            {
+                XamlRoot = XamlRoot,
+                Title = "Check images for known vulnerabilities?",
+                Content = new TextBlock
+                {
+                    TextWrapping = TextWrapping.Wrap,
+                    Text = "The app reads the SBOM (list of installed packages) that the registry publishes with the image, "
+                           + "and looks up these packages in the free osv.dev vulnerability database by Google.\n\n"
+                           + "Only package names and versions are sent to osv.dev, never image names or credentials. "
+                           + "Results are cached for 24 hours. You can turn this off any time under Settings.",
+                },
+                PrimaryButtonText = "Turn on and check",
+                CloseButtonText = "Not now",
+                DefaultButton = ContentDialogButton.Primary,
+            };
+            if (await enable.ShowAsync() != ContentDialogResult.Primary) return;
+
+            App.Current.Settings.CheckVulnerabilities = true;
+            App.Current.Settings.Save();
+            await ViewModel.ScanVulnerabilitiesAsync();
+            return;
+        }
+
+        var dialog = new VulnerabilityDialog(card, result.Suggestions) { XamlRoot = XamlRoot };
+        await dialog.ShowAsync();
+    }
+
     private void AddAccount_Click(object sender, RoutedEventArgs e) =>
         ((MainWindow)App.Current.MainWindow).NavigateTo("accounts");
 }

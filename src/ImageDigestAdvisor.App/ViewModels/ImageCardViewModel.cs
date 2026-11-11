@@ -3,9 +3,25 @@ using System.Text;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using ImageDigestAdvisor.Core.Analysis;
+using ImageDigestAdvisor.Core.Security;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Media;
 using Windows.ApplicationModel.DataTransfer;
 
 namespace ImageDigestAdvisor.App.ViewModels;
+
+public enum SecurityChipState
+{
+    /// <summary>The check is off and this card doesn't offer it.</summary>
+    Hidden,
+
+    /// <summary>The check is off; the chip offers to turn it on.</summary>
+    Offer,
+
+    Busy,
+
+    Done,
+}
 
 public sealed record PropertyRow(string Name, string Value, bool Monospace = false, string? Link = null, bool Emphasis = false)
 {
@@ -30,8 +46,146 @@ public sealed partial class ImageCardViewModel : ObservableObject
         Subtitle = subtitle;
         PinnedReference = pinnedReference;
         IsRecommended = isRecommended;
+        Details = details;
+        IsSuggestion = compareTo is not null;
         Properties = BuildProperties(details, now, compareTo);
         Sections = BuildSections(details);
+    }
+
+    public ImageDetails Details { get; }
+
+    /// <summary>False for the user's own image.</summary>
+    public bool IsSuggestion { get; }
+
+    // ---- Known vulnerabilities (chip on the card, details in VulnerabilityDialog) ----
+
+    /// <summary>Set by <see cref="ResultViewModel"/>: whether the check is enabled, running or done.</summary>
+    public SecurityChipState SecurityState
+    {
+        get;
+        private set
+        {
+            if (SetProperty(ref field, value)) RaiseSecurityChanged();
+        }
+    } = SecurityChipState.Hidden;
+
+    public VulnerabilityReport? Report { get; private set; }
+
+    /// <summary>The report of the user's image, for "fixes N" on suggestions.</summary>
+    public VulnerabilityReport? Baseline { get; private set; }
+
+    /// <summary>Vulnerabilities of the user's image that this suggestion no longer has.</summary>
+    public IReadOnlyList<VulnerabilityFinding> FixedVulnerabilities =>
+        Report is { IsCompleted: true } r && Baseline is { IsCompleted: true } b ? r.FixedComparedTo(b) : [];
+
+    /// <summary>Vulnerabilities with a fix in the user's image that this suggestion still has.</summary>
+    public IReadOnlyList<VulnerabilityFinding> StillOpenVulnerabilities =>
+        Report is { IsCompleted: true } r && Baseline is { IsCompleted: true } b ? r.StillOpenComparedTo(b) : [];
+
+    /// <summary>Vulnerabilities this suggestion has that the user's image doesn't.</summary>
+    public IReadOnlyList<VulnerabilityFinding> NewVulnerabilities =>
+        Report is { IsCompleted: true } r && Baseline is { IsCompleted: true } b ? r.NewComparedTo(b) : [];
+
+    public void ShowSecurityOffer() => SecurityState = IsSuggestion ? SecurityChipState.Hidden : SecurityChipState.Offer;
+
+    public void BeginSecurityScan()
+    {
+        Report = null;
+        Baseline = null;
+        SecurityState = SecurityChipState.Busy;
+    }
+
+    public void SetSecurityReport(VulnerabilityReport report, VulnerabilityReport? baseline)
+    {
+        Report = report;
+        Baseline = baseline;
+        SecurityState = SecurityChipState.Done;
+        RaiseSecurityChanged();
+    }
+
+    public void CancelSecurityScan()
+    {
+        if (SecurityState == SecurityChipState.Busy) SecurityState = SecurityChipState.Hidden;
+    }
+
+    public bool IsSecurityChipVisible => SecurityState is SecurityChipState.Offer or SecurityChipState.Done;
+
+    public bool IsSecurityBusy => SecurityState == SecurityChipState.Busy;
+
+    private SecurityTone Tone => (SecurityState, Report) switch
+    {
+        (SecurityChipState.Done, { IsCompleted: true }) when FixedVulnerabilities.Count > 0 => SecurityTone.Good,
+        (SecurityChipState.Done, { IsCompleted: true, FixableCount: > 0 }) => SecurityTone.Bad,
+        (SecurityChipState.Done, { IsCompleted: true }) => SecurityTone.Good,
+        _ => SecurityTone.Neutral,
+    };
+
+    public string SecurityText => (SecurityState, Report) switch
+    {
+        (SecurityChipState.Offer, _) => "Check for CVEs",
+        (SecurityChipState.Done, { IsCompleted: true }) when FixedVulnerabilities.Count > 0 => $"Fixes {FixedVulnerabilities.Count} CVEs",
+        (SecurityChipState.Done, { IsCompleted: true, FixableCount: > 0 } r) => $"{r.FixableCount} fixable CVEs",
+        (SecurityChipState.Done, { IsCompleted: true }) => "No fixable CVEs",
+        (SecurityChipState.Done, { Status: VulnerabilityScanStatus.NoSbom }) => "No SBOM",
+        (SecurityChipState.Done, { Status: VulnerabilityScanStatus.Failed }) => "CVE check failed",
+        _ => string.Empty,
+    };
+
+    public string SecurityTooltip => (SecurityState, Report) switch
+    {
+        (SecurityChipState.Offer, _) => "Check this image for known vulnerabilities (CVEs)",
+        (SecurityChipState.Done, { IsCompleted: true } r) =>
+            $"{r.FixableCount} with a fix available · {r.NoFixCount} without a fix yet · {r.MinorCount} minor"
+            + (FixedVulnerabilities.Count > 0 ? $"\nThis image fixes {FixedVulnerabilities.Count} of the vulnerabilities in your image." : string.Empty)
+            + "\nClick for details.",
+        (SecurityChipState.Done, { Status: VulnerabilityScanStatus.NoSbom }) =>
+            "The registry publishes no SBOM (software bill of materials) for this image, so it can't be checked for known vulnerabilities.",
+        (SecurityChipState.Done, { Message: { } m }) => m,
+        _ => string.Empty,
+    };
+
+    /// <summary>Segoe Fluent Icons: Shield / ShieldError-like warning / checkmark.</summary>
+    public string SecurityGlyph => Tone switch
+    {
+        SecurityTone.Bad => "",  // Warning
+        SecurityTone.Good => "", // CheckMark
+        _ => "",                 // Shield
+    };
+
+    public Brush SecurityBackground => Tone switch
+    {
+        SecurityTone.Bad => ThemeBrush("SystemFillColorCriticalBackgroundBrush"),
+        SecurityTone.Good => ThemeBrush("SystemFillColorSuccessBackgroundBrush"),
+        _ => ThemeBrush("SubtleFillColorSecondaryBrush"),
+    };
+
+    public Brush SecurityForeground => Tone switch
+    {
+        SecurityTone.Bad => ThemeBrush("SystemFillColorCriticalBrush"),
+        SecurityTone.Good => ThemeBrush("SystemFillColorSuccessBrush"),
+        _ => ThemeBrush("TextFillColorSecondaryBrush"),
+    };
+
+    private void RaiseSecurityChanged()
+    {
+        foreach (var name in new[]
+                 {
+                     nameof(IsSecurityChipVisible), nameof(IsSecurityBusy), nameof(SecurityText), nameof(SecurityTooltip),
+                     nameof(SecurityGlyph), nameof(SecurityBackground), nameof(SecurityForeground),
+                 })
+        {
+            OnPropertyChanged(name);
+        }
+    }
+
+    private static Brush ThemeBrush(string key) =>
+        Application.Current.Resources.TryGetValue(key, out var b) && b is Brush brush ? brush : new SolidColorBrush(Microsoft.UI.Colors.Gray);
+
+    private enum SecurityTone
+    {
+        Neutral,
+        Good,
+        Bad,
     }
 
     public string Title { get; }
