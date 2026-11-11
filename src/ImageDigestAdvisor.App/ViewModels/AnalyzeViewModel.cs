@@ -63,6 +63,29 @@ public sealed partial class AnalyzeViewModel : ObservableObject
 
     private bool CanAnalyze() => !string.IsNullOrWhiteSpace(Input);
 
+    private CancellationTokenSource? _scanCts;
+
+    /// <summary>
+    /// Checks the shown images for known vulnerabilities in the background. The main result is already
+    /// visible; the cards update when the check finishes. A new analysis cancels a running check.
+    /// </summary>
+    public async Task ScanVulnerabilitiesAsync()
+    {
+        if (Result is not { } result) return;
+
+        _scanCts?.Cancel();
+        var cts = _scanCts = new CancellationTokenSource();
+        try
+        {
+            await result.ScanVulnerabilitiesAsync(App.Current.Services.Vulnerabilities, cts.Token);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            // Scanner errors become "check failed" reports; anything else must not crash the app.
+            result.SecuritySummary = $"The vulnerability check failed: {e.Message}";
+        }
+    }
+
     [RelayCommand(CanExecute = nameof(CanAnalyze), IncludeCancelCommand = true)]
     private async Task AnalyzeAsync(CancellationToken ct)
     {
@@ -86,6 +109,7 @@ public sealed partial class AnalyzeViewModel : ObservableObject
             return;
         }
 
+        _scanCts?.Cancel();
         IsBusy = true;
         Result = null;
         try
@@ -93,6 +117,8 @@ public sealed partial class AnalyzeViewModel : ObservableObject
             var maxAge = double.IsNaN(MaxAgeDays) || MaxAgeDays <= 0 ? (int?)null : (int)MaxAgeDays;
             var result = await Task.Run(() => App.Current.Services.Analyzer.AnalyzeAsync(Input, new AnalysisOptions { Platform = platform, MaxAgeDays = maxAge }, ct), ct);
             Result = new ResultViewModel(result);
+            if (App.Current.Settings.CheckVulnerabilities) _ = ScanVulnerabilitiesAsync();
+            else Result.OfferVulnerabilityCheck();
 
             var settings = App.Current.Settings;
             settings.Platform = platform.ToString();

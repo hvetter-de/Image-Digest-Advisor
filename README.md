@@ -8,7 +8,7 @@ If it is, the app:
 
 ![Image Digest Advisor: the pinned .NET SDK image is outdated; the recommended update contains .NET 10.0.14 and SDK 10.0.403](docs/images/check-result.png)
 
-- [For users](#for-users): [supported registries](#supported-registries), install, check an image, read the result, registry accounts
+- [For users](#for-users): [supported registries](#supported-registries), install, check an image, read the result, [known vulnerabilities](#known-vulnerabilities-optional), registry accounts
 - [For developers](#for-developers): architecture, build, releases
 - [License](#license): free software under GPL-3.0
 
@@ -28,6 +28,7 @@ For an image you enter, the app checks:
 | **Is there a new major version?** Shown for information only. | `10.0` → `11.0` |
 | **Is the newer version a pre-release?** Preview and RC builds are marked and never recommended. | `sdk:11.0` currently contains *11.0.0-rc.3*, so it's shown as "⚠ pre-release" |
 | **Is the image old?** It was built more than *n* days ago (default 90). | "built 919 days ago" |
+| **Known vulnerabilities** (optional): which CVEs have a fix, and which suggestion fixes them. | "204 fixable CVEs" on your image, "Fixes 298 CVEs" on the update |
 
 For your image and for each suggestion, the app shows:
 
@@ -152,6 +153,35 @@ Scroll down on a card for the full details. Expand **Environment variables** or 
 
 The suggested digest is the **multi-arch digest** when the image supports several platforms. It works on every platform the image supports.
 
+## Known vulnerabilities (optional)
+
+The app can check each image for known vulnerabilities (CVEs). It's **off by default**: click **Check for CVEs** on your image's card, or turn it on under **Settings › Known vulnerabilities**.
+
+Each card then shows a small chip, and the details open in a popup when you click it:
+
+| Chip | Meaning |
+|---|---|
+| **204 fixable CVEs** (red) | Your image contains packages with known vulnerabilities for which a fixed package version exists. |
+| **Fixes 298 CVEs** (green, on suggestions) | This many vulnerabilities of your image are gone in the suggested image. |
+| **No fixable CVEs** | Only vulnerabilities without a fix (or none) are known. |
+| **No SBOM** | The registry publishes no package list for this image, so it can't be checked. |
+
+A line under the findings sums it up, e.g. *"Your image has 204 known vulnerabilities with a fix available. The recommended update fixes 203 of them, and 95 more without a fix in your image's packages."*
+
+The popup groups the vulnerabilities into **Fix available**, **No fix yet** and **Minor** (rated unimportant by the distribution, e.g. Debian). For each one it shows the CVE (linked to osv.dev), the package with installed and fixed version, the CVSS severity and a short description. On your image it also says which suggestion fixes it; on a suggestion there are tabs for **Fixed vs. yours**, **Still open** (vulnerabilities that have a fix in your image but are still in the suggested image) and **New vs. yours**.
+
+Unfixed vulnerabilities are normal: a freshly built Debian image typically has 100–200 of them, most of them minor. That's why only fixable ones are counted on the chip.
+
+**How it works and what it can check:**
+
+- The app reads the **SBOM** (software bill of materials, the list of installed packages) that the registry publishes with the image. Nothing is pulled or unpacked.
+- Images built with BuildKit SBOM attestations have one, e.g. all **Docker Official Images** on Docker Hub (`nginx`, `node`, `python`, …). SBOMs attached as OCI referrers (SPDX) work too.
+- **Microsoft Container Registry** images currently publish no SBOM and show *No SBOM*.
+- Checked package types: Debian, Ubuntu and Alpine OS packages, plus npm, PyPI, Go, Maven, NuGet, RubyGems, crates.io and Packagist packages listed in the SBOM. RPM-based images (Red Hat, Fedora, …) are not checked yet.
+- The packages are looked up in **[osv.dev](https://osv.dev)**, Google's free open-source vulnerability database. Only package names, versions and the distribution release are sent, never image names or credentials. Answers are cached for 24 hours.
+- Severity is the CVSS 3.x base score. Vulnerabilities that only have a CVSS 4.0 vector are shown as *CVSS 4.0* without a score.
+- On Docker Hub, reading an SBOM costs up to two pulls the first time per image (it's cached forever after). The check is skipped when fewer than 5 anonymous pulls are left.
+
 ## Registry accounts (optional)
 
 Public images need **no login**. Add an account under **Registry accounts › Add account** if:
@@ -178,7 +208,7 @@ Click **Test connection** before saving.
 
 - **Cache:** image information is stored by digest in `%LOCALAPPDATA%\ImageDigestAdvisor.Data\cache`. That content can never change, so checking the same image again is fast and doesn't use up Docker Hub's limit. You can clear it under **Settings › Clear cache**.
 - **Preferences** (platform, age limit, recent inputs, automatic update check) are stored in `%LOCALAPPDATA%\ImageDigestAdvisor.Data\settings.json`. They survive updates. Delete the folder to remove them after uninstalling.
-- **Network:** the app only connects to the registries you check, `hub.docker.com` for Docker Hub tag lists, and `github.com` to look for updates. Credentials are only sent to the registry they belong to. **No telemetry** is collected.
+- **Network:** the app only connects to the registries you check, `hub.docker.com` for Docker Hub tag lists, and `github.com` to look for updates. If you turn on the [vulnerability check](#known-vulnerabilities-optional), package names and versions from the image's SBOM are also sent to `api.osv.dev`. Credentials are only sent to the registry they belong to. **No telemetry** is collected.
 
 ## Troubleshooting
 
@@ -204,7 +234,7 @@ Windows desktop app built with **WinUI 3 / Windows App SDK** on **.NET 10**, MVV
 
 | Project | Purpose |
 |---|---|
-| `src/ImageDigestAdvisor.Core` | All logic: reference parsing, OCI registry client (token auth, caching), Docker Hub tag API, credential chain, analyzer. No UI dependency. |
+| `src/ImageDigestAdvisor.Core` | All logic: reference parsing, OCI registry client (token auth, caching), Docker Hub tag API, credential chain, analyzer, vulnerability check (`Security/`). No UI dependency. |
 | `src/ImageDigestAdvisor.App` | WinUI 3 app (MVVM with CommunityToolkit.Mvvm). Single-project MSIX, also builds unpackaged. Velopack for installer and updates. |
 | `tests/ImageDigestAdvisor.Core.Tests` | MSTest tests against an in-memory fake registry. They make no network calls. |
 | `build/pack.ps1` | Publishes the app and creates the Velopack packages (Setup.exe, portable zip, update packages). |
@@ -221,6 +251,18 @@ Entry points: `DigestAnalyzer` (the analysis), `RegistryClient` (OCI Distributio
 5. Resolve the same tag's current digest, plus the newest patch, minor and major in the same tag family. A family means the same prefix, the same number of version parts, and the same suffix with digits ignored (see `TagVersion`).
 6. Compare software versions. `ImageDetails.SoftwareVersions` collects the `*_VERSION` environment variables, and `SoftwareChangesSince` compares two images. Versions with `-rc`, `-preview` and similar suffixes count as pre-releases (`SoftwareVersion.IsPrerelease`). They never raise a warning and are never recommended.
 7. Build findings and an overall status, and deduplicate suggestions by digest.
+
+## How the vulnerability check works
+
+`VulnerabilityScanner` (in `Core/Security`) runs after the analysis, in the background, for your image and every suggestion:
+
+1. `SbomReader` finds the SBOM: in the image index, the `attestation-manifest` entry whose `vnd.docker.reference.digest` is the platform manifest, then its in-toto layer with predicate type `https://spdx.dev/Document`. Otherwise it asks the OCI Referrers API for `application/spdx+json` artifacts. Manifests and blobs go through the normal content cache.
+2. The package URLs (purls) from the SPDX document are mapped to OSV packages (`OsvPackage.FromPurl`). OS packages use the **source** package and the release, e.g. `pkg:deb/debian/libc6?upstream=glibc&distro=debian-12` → `Debian:12 / glibc`.
+3. `OsvClient` sends them to `api.osv.dev/v1/querybatch` (up to 1,000 per request) and loads each vulnerability record. Answers are cached for 24 hours (`FileTimedCache`, under `cache\osv`).
+4. Each finding is classified: **Fixable** if the affected range for the installed version has a `fixed` event (`FixedVersionFor` picks the range of the installed release line), **Minor** if Debian rates it `unimportant`, otherwise **No fix**. The CVSS 3.x base score is computed from the vector (`Cvss3`).
+5. `VulnerabilityReport.FixedComparedTo`, `StillOpenComparedTo` and `NewComparedTo` compare a suggestion with your image by CVE and package.
+
+Registry and osv.dev errors never fail the analysis; the card shows *CVE check failed* with the reason.
 
 ## How credentials are resolved
 

@@ -35,11 +35,32 @@
                             <TextBlock Text="{x:Bind Subtitle}" Style="{StaticResource CaptionTextBlockStyle}"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
                         </StackPanel>
-                        <Border Grid.Column="1" VerticalAlignment="Top" CornerRadius="10" Padding="10,3"
-                                Background="{ThemeResource AccentFillColorDefaultBrush}" Visibility="{x:Bind IsRecommended}">
-                            <TextBlock Text="Recommended" Style="{StaticResource CaptionTextBlockStyle}"
-                                       Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
-                        </Border>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Top">
+                            <!-- Known vulnerabilities: a small chip; details open in a dialog. -->
+                            <StackPanel Orientation="Horizontal" Spacing="6" Padding="10,3" VerticalAlignment="Center"
+                                        Visibility="{x:Bind IsSecurityBusy, Mode=OneWay}"
+                                        ToolTipService.ToolTip="Checking for known vulnerabilities…">
+                                <ProgressRing IsActive="{x:Bind IsSecurityBusy, Mode=OneWay}" Width="16" Height="16" MinWidth="16" MinHeight="16" />
+                                <TextBlock Text="Checking CVEs…" Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            </StackPanel>
+                            <Button Click="SecurityChip_Click" Padding="10,2" CornerRadius="10" MinHeight="0" VerticalAlignment="Center"
+                                    BorderThickness="0" Background="{x:Bind SecurityBackground, Mode=OneWay}"
+                                    Visibility="{x:Bind IsSecurityChipVisible, Mode=OneWay}"
+                                    ToolTipService.ToolTip="{x:Bind SecurityTooltip, Mode=OneWay}"
+                                    AutomationProperties.Name="{x:Bind SecurityText, Mode=OneWay}">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <FontIcon Glyph="{x:Bind SecurityGlyph, Mode=OneWay}" FontSize="12" Foreground="{x:Bind SecurityForeground, Mode=OneWay}" />
+                                    <TextBlock Text="{x:Bind SecurityText, Mode=OneWay}" Style="{StaticResource CaptionTextBlockStyle}"
+                                               Foreground="{x:Bind SecurityForeground, Mode=OneWay}" />
+                                </StackPanel>
+                            </Button>
+                            <Border VerticalAlignment="Center" CornerRadius="10" Padding="10,3"
+                                    Background="{ThemeResource AccentFillColorDefaultBrush}" Visibility="{x:Bind IsRecommended}">
+                                <TextBlock Text="Recommended" Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
+                            </Border>
+                        </StackPanel>
                     </Grid>
 
                     <Grid ColumnSpacing="8" Padding="10,8" CornerRadius="4"
@@ -176,6 +197,15 @@
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
+                        <Grid ColumnSpacing="10" Margin="0,3"
+                              Visibility="{x:Bind ViewModel.Result.HasSecuritySummary, Mode=OneWay, FallbackValue=Collapsed}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <FontIcon Glyph="&#xEA18;" Foreground="{ThemeResource SystemFillColorCautionBrush}" FontSize="16" VerticalAlignment="Top" Margin="0,2,0,0" />
+                            <TextBlock Grid.Column="1" Text="{x:Bind ViewModel.Result.SecuritySummary, Mode=OneWay}" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+                        </Grid>
                         <ItemsControl ItemsSource="{x:Bind ViewModel.Result.Warnings, Mode=OneWay}"
                                       Visibility="{x:Bind ViewModel.Result.HasWarnings, Mode=OneWay}">
                             <ItemsControl.ItemTemplate>

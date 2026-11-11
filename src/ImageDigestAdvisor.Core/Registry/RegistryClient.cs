@@ -116,6 +116,34 @@ public sealed partial class RegistryClient
         return content;
     }
 
+    /// <summary>
+    /// Lists artifacts that refer to <paramref name="digest"/> (SBOMs, signatures) via the OCI 1.1 Referrers API.
+    /// Returns null if the registry doesn't support it. The result is not cached: new referrers can appear at any time.
+    /// </summary>
+    public async Task<byte[]?> GetReferrersAsync(ImageReference repo, string digest, string? artifactType = null, CancellationToken ct = default)
+    {
+        var url = $"https://{repo.ApiHost}/v2/{repo.Repository}/referrers/{digest}"
+                  + (artifactType is null ? string.Empty : "?artifactType=" + Uri.EscapeDataString(artifactType));
+        using var response = await SendAsync(repo, () =>
+        {
+            var request = new HttpRequestMessage(HttpMethod.Get, url);
+            request.Headers.Accept.ParseAdd(MediaTypes.OciIndex);
+            return request;
+        }, ct).ConfigureAwait(false);
+
+        if (!response.IsSuccessStatusCode) return null;
+        var content = await response.Content.ReadAsByteArrayAsync(ct).ConfigureAwait(false);
+        try
+        {
+            using var doc = JsonDocument.Parse(content);
+            return doc.RootElement.TryGetProperty("manifests", out _) ? content : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
     /// <summary>Lists tags via <c>/v2/&lt;repo&gt;/tags/list</c>, following pagination up to <paramref name="maxTags"/>.</summary>
     public async Task<(IReadOnlyList<string> Tags, bool Complete)> ListTagsAsync(ImageReference repo, int maxTags = 5000, CancellationToken ct = default)
     {

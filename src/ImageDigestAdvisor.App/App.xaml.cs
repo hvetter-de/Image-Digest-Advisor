@@ -2,6 +2,7 @@ using ImageDigestAdvisor.App.Services;
 using ImageDigestAdvisor.Core;
 using ImageDigestAdvisor.Core.Credentials;
 using ImageDigestAdvisor.Core.Registry;
+using ImageDigestAdvisor.Core.Security;
 using Microsoft.UI.Xaml;
 
 namespace ImageDigestAdvisor.App;
@@ -18,7 +19,8 @@ public partial class App : Application
 
         Settings = AppSettings.Load();
         Cache = new DiskContentCache(DiskContentCache.DefaultDirectory());
-        Services = new ImageDigestAdvisorServices(new WindowsCredentialStore(), Cache);
+        Services = new ImageDigestAdvisorServices(new WindowsCredentialStore(), Cache,
+            vulnerabilityCache: new FileTimedCache(Path.Combine(AppPaths.CacheDirectory, "osv")));
     }
 
     public static new App Current => (App)Application.Current;

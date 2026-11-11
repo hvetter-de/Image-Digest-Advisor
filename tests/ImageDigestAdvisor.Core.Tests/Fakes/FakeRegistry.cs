@@ -35,7 +35,9 @@ internal sealed class FakeRegistry : HttpMessageHandler
     public void AddHubResponse(string url, string json) => _hubResponses[url] = json;
 
     /// <summary>Adds a multi-arch image (amd64 + arm64) and returns its index and per-platform digests.</summary>
-    public FakeImage AddImage(DateTimeOffset created, IDictionary<string, string>? labels = null, IDictionary<string, string>? env = null, string salt = "")
+    /// <param name="sbomPurls">If set, a BuildKit-style SBOM attestation (SPDX in in-toto) listing these purls is added for linux/amd64.</param>
+    public FakeImage AddImage(DateTimeOffset created, IDictionary<string, string>? labels = null, IDictionary<string, string>? env = null, string salt = "",
+        IEnumerable<string>? sbomPurls = null)
     {
         var platforms = new[] { ("linux", "amd64", (string?)null), ("linux", "arm64", "v8") };
         var entries = new List<object>();
@@ -72,8 +74,57 @@ internal sealed class FakeRegistry : HttpMessageHandler
             entries.Add(new { mediaType = MediaTypes.OciManifest, digest = manifestDigest, size = manifest.Length, platform = new { os, architecture = arch, variant } });
         }
 
-        // Attestation entry like BuildKit adds – must be ignored.
-        entries.Add(new { mediaType = MediaTypes.OciManifest, digest = manifestDigests["linux/amd64"], size = 1, platform = new { os = "unknown", architecture = "unknown" } });
+        // Attestation entry like BuildKit adds – must be ignored by the analyzer.
+        var attestationDigest = manifestDigests["linux/amd64"];
+        if (sbomPurls is not null)
+        {
+            var statement = Json(new
+            {
+                _type = "https://in-toto.io/Statement/v0.1",
+                predicateType = "https://spdx.dev/Document",
+                predicate = new
+                {
+                    spdxVersion = "SPDX-2.3",
+                    packages = sbomPurls.Select((p, i) => new
+                    {
+                        name = "pkg" + i,
+                        externalRefs = new[] { new { referenceCategory = "PACKAGE-MANAGER", referenceType = "purl", referenceLocator = p } },
+                    }).ToArray(),
+                },
+            });
+            var statementDigest = Store(statement, "application/vnd.in-toto+json");
+            var emptyConfig = Json(new { });
+            var emptyConfigDigest = Store(emptyConfig, "application/vnd.oci.image.config.v1+json");
+            var attestation = Json(new
+            {
+                schemaVersion = 2,
+                mediaType = MediaTypes.OciManifest,
+                config = new { mediaType = "application/vnd.oci.image.config.v1+json", digest = emptyConfigDigest, size = emptyConfig.Length },
+                layers = new[]
+                {
+                    new
+                    {
+                        mediaType = "application/vnd.in-toto+json",
+                        digest = statementDigest,
+                        size = (long)statement.Length,
+                        annotations = new Dictionary<string, string> { ["in-toto.io/predicate-type"] = "https://spdx.dev/Document" },
+                    },
+                },
+            });
+            attestationDigest = Store(attestation, MediaTypes.OciManifest);
+        }
+        entries.Add(new
+        {
+            mediaType = MediaTypes.OciManifest,
+            digest = attestationDigest,
+            size = 1,
+            platform = new { os = "unknown", architecture = "unknown" },
+            annotations = new Dictionary<string, string>
+            {
+                ["vnd.docker.reference.type"] = "attestation-manifest",
+                ["vnd.docker.reference.digest"] = manifestDigests["linux/amd64"],
+            },
+        });
 
         var index = Json(new { schemaVersion = 2, mediaType = MediaTypes.OciIndex, manifests = entries });
         var indexDigest = Store(index, MediaTypes.OciIndex);
@@ -91,6 +142,8 @@ internal sealed class FakeRegistry : HttpMessageHandler
                 ? JsonResponse(hub)
                 : new HttpResponseMessage(HttpStatusCode.NotFound));
         }
+
+        if (uri.Host == "api.osv.dev") return OsvAsync(request);
 
         if (uri.Host == "auth.example")
         {
@@ -159,6 +212,38 @@ internal sealed class FakeRegistry : HttpMessageHandler
         }
 
         return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));
+    }
+
+    /// <summary>OSV records (JSON) by ID, and which IDs affect a package ("ecosystem|name|version").</summary>
+    public Dictionary<string, string> OsvRecords { get; } = new(StringComparer.Ordinal);
+
+    public Dictionary<string, List<string>> OsvAffects { get; } = new(StringComparer.Ordinal);
+
+    public int OsvRequests => Requests.Count(r => r.Url.StartsWith("https://api.osv.dev/", StringComparison.Ordinal));
+
+    private async Task<HttpResponseMessage> OsvAsync(HttpRequestMessage request)
+    {
+        var path = request.RequestUri!.AbsolutePath;
+        if (request.Method == HttpMethod.Post && path == "/v1/querybatch")
+        {
+            using var doc = JsonDocument.Parse(await request.Content!.ReadAsStringAsync());
+            var results = doc.RootElement.GetProperty("queries").EnumerateArray().Select(q =>
+            {
+                var p = q.GetProperty("package");
+                var key = $"{p.GetProperty("ecosystem").GetString()}|{p.GetProperty("name").GetString()}|{q.GetProperty("version").GetString()}";
+                return OsvAffects.TryGetValue(key, out var ids)
+                    ? (object)new { vulns = ids.Select(id => new { id, modified = "2026-01-01T00:00:00Z" }).ToArray() }
+                    : new { };
+            }).ToArray();
+            return JsonResponse(JsonSerializer.Serialize(new { results }));
+        }
+
+        if (request.Method == HttpMethod.Get && path.StartsWith("/v1/vulns/", StringComparison.Ordinal)
+            && OsvRecords.TryGetValue(Uri.UnescapeDataString(path["/v1/vulns/".Length..]), out var record))
+        {
+            return JsonResponse(record);
+        }
+        return new HttpResponseMessage(HttpStatusCode.NotFound);
     }
 
     private string Store(byte[] content, string mediaType)

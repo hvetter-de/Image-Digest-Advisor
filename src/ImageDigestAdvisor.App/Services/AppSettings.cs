@@ -20,6 +20,12 @@ public sealed class AppSettings
     /// <summary>Check GitHub Releases for a new version when the app starts (Setup.exe installs only).</summary>
     public bool AutoCheckUpdates { get; set; } = true;
 
+    /// <summary>
+    /// Check images for known vulnerabilities (SBOM from the registry + osv.dev). Off by default because it
+    /// sends package names and versions to osv.dev.
+    /// </summary>
+    public bool CheckVulnerabilities { get; set; }
+
     public static AppSettings Load()
     {
         try

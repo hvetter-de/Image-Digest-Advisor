@@ -2,6 +2,7 @@ using System.Net;
 using ImageDigestAdvisor.Core.Analysis;
 using ImageDigestAdvisor.Core.Credentials;
 using ImageDigestAdvisor.Core.Registry;
+using ImageDigestAdvisor.Core.Security;
 
 namespace ImageDigestAdvisor.Core;
 
@@ -10,7 +11,9 @@ public sealed class ImageDigestAdvisorServices : IDisposable
 {
     private readonly bool _ownsHttp;
 
-    public ImageDigestAdvisorServices(IAppCredentialStore appCredentials, IContentCache cache, HttpClient? http = null, string? dockerConfigPath = null)
+    /// <param name="vulnerabilityCache">Cache for OSV answers (they expire); defaults to memory.</param>
+    public ImageDigestAdvisorServices(IAppCredentialStore appCredentials, IContentCache cache, HttpClient? http = null, string? dockerConfigPath = null,
+        ITimedCache? vulnerabilityCache = null)
     {
         _ownsHttp = http is null;
         Http = http ?? CreateHttpClient();
@@ -21,7 +24,11 @@ public sealed class ImageDigestAdvisorServices : IDisposable
         Tags = new TagCatalog(Http, Registry);
         Inspector = new ImageInspector(Registry);
         Analyzer = new DigestAnalyzer(Registry, Tags, Inspector);
+        Vulnerabilities = new VulnerabilityScanner(new SbomReader(Registry), new OsvClient(Http, vulnerabilityCache ?? new MemoryTimedCache()));
     }
+
+    /// <summary>Known-vulnerability check (SBOM from the registry + OSV.dev). Opt-in in the app.</summary>
+    public VulnerabilityScanner Vulnerabilities { get; }
 
     public HttpClient Http { get; }
 

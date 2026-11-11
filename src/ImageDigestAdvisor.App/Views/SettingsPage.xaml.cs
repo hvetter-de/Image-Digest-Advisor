@@ -29,6 +29,15 @@ public sealed partial class SettingsPage : Page
 
         VersionInfo.Text = $"Image Digest Advisor {Updates.CurrentVersion}";
         AutoUpdateToggle.IsOn = App.Current.Settings.AutoCheckUpdates;
+        VulnerabilityToggle.IsOn = App.Current.Settings.CheckVulnerabilities;
+    }
+
+    private void VulnerabilityToggle_Toggled(object sender, RoutedEventArgs e)
+    {
+        var settings = App.Current.Settings;
+        if (settings.CheckVulnerabilities == VulnerabilityToggle.IsOn) return;
+        settings.CheckVulnerabilities = VulnerabilityToggle.IsOn;
+        settings.Save();
     }
 
     private void AutoUpdateToggle_Toggled(object sender, RoutedEventArgs e)
