@@ -39,8 +39,9 @@ public sealed record DetailSection(string Header, IReadOnlyList<PropertyRow> Row
 public sealed partial class ImageCardViewModel : ObservableObject
 {
     /// <param name="compareTo">For suggestions: the user's image, to show what changed.</param>
+    /// <param name="comparedWith">Name of <paramref name="compareTo"/> in the texts, e.g. a release tag; null means "your image".</param>
     public ImageCardViewModel(string title, string subtitle, string pinnedReference, ImageDetails details, DateTimeOffset now,
-        bool isRecommended = false, ImageDetails? compareTo = null)
+        bool isRecommended = false, ImageDetails? compareTo = null, string? comparedWith = null)
     {
         Title = title;
         Subtitle = subtitle;
@@ -48,7 +49,7 @@ public sealed partial class ImageCardViewModel : ObservableObject
         IsRecommended = isRecommended;
         Details = details;
         IsSuggestion = compareTo is not null;
-        Properties = BuildProperties(details, now, compareTo);
+        Properties = BuildProperties(details, now, compareTo, comparedWith);
         Sections = BuildSections(details);
     }
 
@@ -85,6 +86,12 @@ public sealed partial class ImageCardViewModel : ObservableObject
     /// <summary>Vulnerabilities this suggestion has that the user's image doesn't.</summary>
     public IReadOnlyList<VulnerabilityFinding> NewVulnerabilities =>
         Report is { IsCompleted: true } r && Baseline is { IsCompleted: true } b ? r.NewComparedTo(b) : [];
+
+    /// <summary>Lets the chip offer the check on any card (history rows).</summary>
+    public void OfferSecurityCheck()
+    {
+        if (SecurityState == SecurityChipState.Hidden) SecurityState = SecurityChipState.Offer;
+    }
 
     public void ShowSecurityOffer() => SecurityState = IsSuggestion ? SecurityChipState.Hidden : SecurityChipState.Offer;
 
@@ -214,7 +221,7 @@ public sealed partial class ImageCardViewModel : ObservableObject
         CopyText = "Copy";
     }
 
-    private static List<PropertyRow> BuildProperties(ImageDetails d, DateTimeOffset now, ImageDetails? compareTo)
+    private static List<PropertyRow> BuildProperties(ImageDetails d, DateTimeOffset now, ImageDetails? compareTo, string? comparedWith)
     {
         var rows = new List<PropertyRow>
         {
@@ -230,7 +237,7 @@ public sealed partial class ImageCardViewModel : ObservableObject
                 < 0 => $"{-days} days older",
                 _ => "same day",
             };
-            rows.Add(new("Replaces", $"your build from {oldCreated.UtcDateTime:yyyy-MM-dd HH:mm} UTC ({relation})"));
+            rows.Add(new("Replaces", $"{comparedWith ?? "your build"} from {oldCreated.UtcDateTime:yyyy-MM-dd HH:mm} UTC ({relation})"));
         }
 
         // Software versions the image declares (DOTNET_VERSION, NGINX_VERSION, ...).
@@ -245,8 +252,8 @@ public sealed partial class ImageCardViewModel : ObservableObject
         {
             var changes = d.SoftwareChangesSince(compareTo);
             rows.Add(changes.Count > 0
-                ? new("Changes vs. yours", string.Join("\n", changes), Emphasis: true)
-                : new("Changes vs. yours", "Same software versions – rebuilt with base image / OS updates"));
+                ? new($"Changes vs. {comparedWith ?? "yours"}", string.Join("\n", changes), Emphasis: true)
+                : new($"Changes vs. {comparedWith ?? "yours"}", "Same software versions – rebuilt with base image / OS updates"));
         }
 
         var platforms = d.AvailablePlatforms.Count > 1

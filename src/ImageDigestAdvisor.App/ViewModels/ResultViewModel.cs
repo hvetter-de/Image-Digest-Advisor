@@ -147,6 +147,14 @@ public sealed partial class ResultViewModel : ObservableObject
             .Select(s => new ImageCardViewModel(s.Title, Describe(s, allowPrerelease), s.PinnedReference, s.Details, now, ReferenceEquals(s, recommended), compareTo: result.Requested))
             .ToList();
 
+        // History of the tag (release tags + digests seen by the app); only the user's own digest is marked as "your image".
+        if ((result.EffectiveTag ?? result.Input.Tag) is { } historyTag)
+        {
+            HistoryRequest = new HistoryRequest(result.Requested.Reference.WithDigest(null).WithTag(historyTag), result.Requested.Platform,
+                result.Input.Digest is null ? null : result.Requested);
+            HistoryButtonText = $"History of '{historyTag}'";
+        }
+
         if (result.RateLimit is { Remaining: { } remaining } rl)
         {
             var window = rl.WindowSeconds is { } w ? w >= 3600 ? $"{w / 3600} h" : $"{w / 60} min" : "window";
@@ -154,6 +162,13 @@ public sealed partial class ResultViewModel : ObservableObject
             ShowAddAccountHint = !rl.Authenticated;
         }
     }
+
+    /// <summary>Opens the History page for the checked tag; null if the tag is unknown.</summary>
+    public HistoryRequest? HistoryRequest { get; }
+
+    public bool HasHistory => HistoryRequest is not null;
+
+    public string HistoryButtonText { get; } = string.Empty;
 
     public string StatusTitle { get; }
 

@@ -10,6 +10,9 @@ public sealed partial class AnalyzePage : Page
     // Keep the view model (and the last result) when navigating between pages.
     private static readonly Lazy<AnalyzeViewModel> SharedViewModel = new(() => new AnalyzeViewModel());
 
+    /// <summary>The check page's state, also used by the History page ("Check this digest").</summary>
+    public static AnalyzeViewModel Shared => SharedViewModel.Value;
+
     public AnalyzePage()
     {
         InitializeComponent();
@@ -58,32 +61,18 @@ public sealed partial class AnalyzePage : Page
 
         if (card.SecurityState == SecurityChipState.Offer)
         {
-            var enable = new ContentDialog
-            {
-                XamlRoot = XamlRoot,
-                Title = "Check images for known vulnerabilities?",
-                Content = new TextBlock
-                {
-                    TextWrapping = TextWrapping.Wrap,
-                    Text = "The app reads the SBOM (list of installed packages) that the registry publishes with the image, "
-                           + "and looks up these packages in the free osv.dev vulnerability database by Google.\n\n"
-                           + "Only package names and versions are sent to osv.dev, never image names or credentials. "
-                           + "Results are cached for 24 hours. You can turn this off any time under Settings.",
-                },
-                PrimaryButtonText = "Turn on and check",
-                CloseButtonText = "Not now",
-                DefaultButton = ContentDialogButton.Primary,
-            };
-            if (await enable.ShowAsync() != ContentDialogResult.Primary) return;
-
-            App.Current.Settings.CheckVulnerabilities = true;
-            App.Current.Settings.Save();
+            if (!await VulnerabilityConsent.EnsureEnabledAsync(XamlRoot)) return;
             await ViewModel.ScanVulnerabilitiesAsync();
             return;
         }
 
         var dialog = new VulnerabilityDialog(card, result.Suggestions) { XamlRoot = XamlRoot };
         await dialog.ShowAsync();
+    }
+
+    private void History_Click(object sender, RoutedEventArgs e)
+    {
+        if (ViewModel.Result?.HistoryRequest is { } request) Frame.Navigate(typeof(HistoryPage), request, new Microsoft.UI.Xaml.Media.Animation.DrillInNavigationTransitionInfo());
     }
 
     private void AddAccount_Click(object sender, RoutedEventArgs e) =>

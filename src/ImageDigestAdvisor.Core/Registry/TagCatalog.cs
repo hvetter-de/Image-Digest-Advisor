@@ -16,6 +16,9 @@ public sealed record TagInfo(string Name)
     /// <summary>Per-platform manifest digests, if known.</summary>
     public IReadOnlyList<(Platform Platform, string Digest)> PlatformDigests { get; init; } = [];
 
+    /// <summary>Compressed size per platform manifest digest, if the source reports it (Docker Hub does).</summary>
+    public IReadOnlyDictionary<string, long> Sizes { get; init; } = new Dictionary<string, long>();
+
     public bool Contains(string digest) =>
         string.Equals(Digest, digest, StringComparison.OrdinalIgnoreCase)
         || PlatformDigests.Any(p => string.Equals(p.Digest, digest, StringComparison.OrdinalIgnoreCase));
@@ -141,6 +144,7 @@ public sealed class TagCatalog(HttpClient http, RegistryClient registry) : ITagC
         }
 
         var platforms = new List<(Platform, string)>();
+        var sizes = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
         if (r.TryGetProperty("images", out var images) && images.ValueKind == JsonValueKind.Array)
         {
             foreach (var img in images.EnumerateArray())
@@ -149,12 +153,13 @@ public sealed class TagCatalog(HttpClient http, RegistryClient registry) : ITagC
                 var arch = Str(img, "architecture");
                 var imgDigest = Str(img, "digest");
                 if (os is null || arch is null || imgDigest is null || os == "unknown") continue;
+                if (img.TryGetProperty("size", out var size) && size.ValueKind == JsonValueKind.Number && size.TryGetInt64(out var bytes)) sizes[imgDigest] = bytes;
                 platforms.Add((new Platform(os, arch, string.IsNullOrEmpty(Str(img, "variant")) ? null : Str(img, "variant")), imgDigest));
             }
         }
 
         // Single-platform images: the Hub "digest" is the manifest digest itself.
-        return new TagInfo(name) { Digest = digest, LastPushed = pushed, PlatformDigests = platforms };
+        return new TagInfo(name) { Digest = digest, LastPushed = pushed, PlatformDigests = platforms, Sizes = sizes };
     }
 
     private static string? Str(JsonElement e, string name) =>
