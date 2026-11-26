@@ -8,7 +8,7 @@ If it is, the app:
 
 ![Image Digest Advisor: the pinned .NET SDK image is outdated; the recommended update contains .NET 10.0.14 and SDK 10.0.403](docs/images/check-result.png)
 
-- [For users](#for-users): [supported registries](#supported-registries), install, check an image, read the result, [known vulnerabilities](#known-vulnerabilities-optional), registry accounts
+- [For users](#for-users): [supported registries](#supported-registries), install, check an image, read the result, [tag history](#tag-history), [known vulnerabilities](#known-vulnerabilities-optional), registry accounts
 - [For developers](#for-developers): architecture, build, releases
 - [License](#license): free software under GPL-3.0
 
@@ -29,6 +29,7 @@ For an image you enter, the app checks:
 | **Is the newer version a pre-release?** Preview and RC builds are marked and never recommended. | `sdk:11.0` currently contains *11.0.0-rc.3*, so it's shown as "⚠ pre-release" |
 | **Is the image old?** It was built more than *n* days ago (default 90). | "built 919 days ago" |
 | **Known vulnerabilities** (optional): which CVEs have a fix, and which suggestion fixes them. | "204 fixable CVEs" on your image, "Fixes 298 CVEs" on the update |
+| **What did this tag point to before?** Earlier images of the tag, with date, size and changes. | `cosmos-emulator:vnext-latest`: 33 dated releases since January 2025, each with date and size |
 
 For your image and for each suggestion, the app shows:
 
@@ -153,6 +154,24 @@ Scroll down on a card for the full details. Expand **Environment variables** or 
 
 The suggested digest is the **multi-arch digest** when the image supports several platforms. It works on every platform the image supports.
 
+## Tag history
+
+Click **History of '…'** above your image's card to see which images the tag pointed to before, e.g. all releases of `mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-latest`.
+
+- **The list** shows each image with its date, release tag, short digest, compressed size and the size change from the previous release. Badges mark the **Current** image and **Your image**.
+- **Size over time:** a small bar chart, oldest on the left. Click a bar to jump to that image.
+- **Open a row** for all details, in the same format as the cards, plus *Changes vs. the previous release*, a **Copy** button for the pinned reference, **Check this digest** to run the normal check on it, and a CVE check.
+- **Compare:** tick two images and click **Compare** to see them side by side: dates, size, layers, software versions, labels and, if both were checked, known vulnerabilities.
+
+**Where the history comes from.** Registries don't record where a tag pointed in the past. The app uses two sources:
+
+1. **Release tags** the publisher pushes next to the moving tag: `vnext-EN20261123` next to `vnext-latest`, or `1.27.0` … `1.27.5` next to `1.27`. Copies for one platform (`…-amd64`) and other channels (`vnext-preview`) are left out. The 60 newest are shown.
+2. **Digests this app saw:** each time you check a tag, the app remembers its digest (in `digest-history.json`). This builds a history for tags without release tags, such as `nginx:mainline`, from the day you start using the app.
+
+Older images that no tag points to any more can't be listed, unless the app saw them or you entered their digest.
+
+On **Docker Hub**, dates and sizes come from the Docker Hub tag list and cost no pulls. Opening a row downloads the image manifest, which counts as a pull. On other registries all details load automatically.
+
 ## Known vulnerabilities (optional)
 
 The app can check each image for known vulnerabilities (CVEs). It's **off by default**: click **Check for CVEs** on your image's card, or turn it on under **Settings › Known vulnerabilities**.
@@ -207,6 +226,7 @@ Click **Test connection** before saving.
 ## Settings, data and privacy
 
 - **Cache:** image information is stored by digest in `%LOCALAPPDATA%\ImageDigestAdvisor.Data\cache`. That content can never change, so checking the same image again is fast and doesn't use up Docker Hub's limit. You can clear it under **Settings › Clear cache**.
+- **Tag history:** the digests the app saw for each checked tag are stored in `%LOCALAPPDATA%\ImageDigestAdvisor.Data\digest-history.json` (registry, repository, tag, digest and dates only).
 - **Preferences** (platform, age limit, recent inputs, automatic update check) are stored in `%LOCALAPPDATA%\ImageDigestAdvisor.Data\settings.json`. They survive updates. Delete the folder to remove them after uninstalling.
 - **Network:** the app only connects to the registries you check, `hub.docker.com` for Docker Hub tag lists, and `github.com` to look for updates. If you turn on the [vulnerability check](#known-vulnerabilities-optional), package names and versions from the image's SBOM are also sent to `api.osv.dev`. Credentials are only sent to the registry they belong to. **No telemetry** is collected.
 
@@ -234,7 +254,7 @@ Windows desktop app built with **WinUI 3 / Windows App SDK** on **.NET 10**, MVV
 
 | Project | Purpose |
 |---|---|
-| `src/ImageDigestAdvisor.Core` | All logic: reference parsing, OCI registry client (token auth, caching), Docker Hub tag API, credential chain, analyzer, vulnerability check (`Security/`). No UI dependency. |
+| `src/ImageDigestAdvisor.Core` | All logic: reference parsing, OCI registry client (token auth, caching), Docker Hub tag API, credential chain, analyzer, tag history (`History/`), vulnerability check (`Security/`). No UI dependency. |
 | `src/ImageDigestAdvisor.App` | WinUI 3 app (MVVM with CommunityToolkit.Mvvm). Single-project MSIX, also builds unpackaged. Velopack for installer and updates. |
 | `tests/ImageDigestAdvisor.Core.Tests` | MSTest tests against an in-memory fake registry. They make no network calls. |
 | `build/pack.ps1` | Publishes the app and creates the Velopack packages (Setup.exe, portable zip, update packages). |
@@ -263,6 +283,18 @@ Entry points: `DigestAnalyzer` (the analysis), `RegistryClient` (OCI Distributio
 5. `VulnerabilityReport.FixedComparedTo`, `StillOpenComparedTo` and `NewComparedTo` compare a suggestion with your image by CVE and package.
 
 Registry and osv.dev errors never fail the analysis; the card shows *CVE check failed* with the reason.
+
+## How the tag history works
+
+`TagHistoryService` (in `Core/History`) builds the list when the History page opens:
+
+1. List the tags (`TagCatalog`) and resolve where the tag points today. That digest is recorded in `DigestHistoryStore`.
+2. `TagFamily.Find` picks the release tags. For a version tag (`1.27`, `8.0-alpine`), these are its more specific versions with the same variant (`1.27.x`, `8.0.x-alpine`). For a channel tag (`latest`, `vnext-latest`, `stable`), the stem (`vnext-`) followed by a release stamp: a date or version, optionally with a short letter prefix and a build counter (`EN20250414-2`). Tags are sorted by the numbers they contain, newest first.
+3. Resolve each release tag's digest: from the Docker Hub tag list, otherwise with HEAD requests (8 in parallel, at most `MaxReleaseTags` = 60). Tags with the same digest become one entry.
+4. Add the digests from `DigestHistoryStore` and the user's image. Entries no tag points to any more go to the *untagged* list.
+5. `LoadDetailsAsync` loads created date, size, labels and so on through `ImageInspector`. Content is cached by digest, so it's fast the second time.
+
+`DigestAnalyzer` stays free of side effects: the app calls `TagHistoryService.RecordAnalysis` after each check to record the tag's current digest.
 
 ## How credentials are resolved
 

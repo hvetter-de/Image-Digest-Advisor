@@ -117,6 +117,7 @@ public sealed partial class AnalyzeViewModel : ObservableObject
             var maxAge = double.IsNaN(MaxAgeDays) || MaxAgeDays <= 0 ? (int?)null : (int)MaxAgeDays;
             var result = await Task.Run(() => App.Current.Services.Analyzer.AnalyzeAsync(Input, new AnalysisOptions { Platform = platform, MaxAgeDays = maxAge }, ct), ct);
             Result = new ResultViewModel(result);
+            App.Current.Services.History.RecordAnalysis(result);
             if (App.Current.Settings.CheckVulnerabilities) _ = ScanVulnerabilitiesAsync();
             else Result.OfferVulnerabilityCheck();
 

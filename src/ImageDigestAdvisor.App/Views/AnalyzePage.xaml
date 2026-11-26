@@ -229,7 +229,18 @@
                     </Grid.RowDefinitions>
 
                     <StackPanel x:Name="RequestedColumn" Spacing="8">
-                        <TextBlock Text="Requested" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                        <Grid>
+                            <TextBlock Text="Requested" Style="{StaticResource BodyStrongTextBlockStyle}" VerticalAlignment="Bottom" />
+                            <HyperlinkButton HorizontalAlignment="Right" Padding="6,0" Margin="0,-4,0,-4" Click="History_Click"
+                                             Visibility="{x:Bind ViewModel.Result.HasHistory, Mode=OneWay, FallbackValue=Collapsed}"
+                                             ToolTipService.ToolTip="Earlier images of this tag, with dates and sizes"
+                                             AutomationProperties.Name="Show history">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <FontIcon Glyph="&#xE81C;" FontSize="14" />
+                                    <TextBlock Text="{x:Bind ViewModel.Result.HistoryButtonText, Mode=OneWay}" />
+                                </StackPanel>
+                            </HyperlinkButton>
+                        </Grid>
                         <ContentControl Content="{x:Bind ViewModel.Result.Requested, Mode=OneWay}"
                                         ContentTemplate="{StaticResource ImageCardTemplate}"
                                         HorizontalContentAlignment="Stretch" HorizontalAlignment="Stretch" />

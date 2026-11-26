@@ -37,6 +37,16 @@ public sealed partial class MainWindow : Window
             : Nav.MenuItems.OfType<NavigationViewItem>().First(i => (string)i.Tag == tag);
     }
 
+    /// <summary>"Check image" while the History page is open: go back to the check page.</summary>
+    private void Nav_ItemInvoked(NavigationView sender, NavigationViewItemInvokedEventArgs args)
+    {
+        if (args.InvokedItemContainer?.Tag as string == "analyze" && ContentFrame.CurrentSourcePageType == typeof(HistoryPage))
+        {
+            if (ContentFrame.CanGoBack) ContentFrame.GoBack();
+            else ContentFrame.Navigate(typeof(AnalyzePage));
+        }
+    }
+
     private void Nav_SelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
     {
         var page = args.IsSettingsSelected

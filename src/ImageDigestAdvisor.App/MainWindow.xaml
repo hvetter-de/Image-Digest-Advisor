@@ -42,7 +42,8 @@
             PaneDisplayMode="Top"
             IsBackButtonVisible="Collapsed"
             IsSettingsVisible="True"
-            SelectionChanged="Nav_SelectionChanged">
+            SelectionChanged="Nav_SelectionChanged"
+            ItemInvoked="Nav_ItemInvoked">
             <NavigationView.MenuItems>
                 <NavigationViewItem x:Name="AnalyzeItem" Content="Check image" Tag="analyze">
                     <NavigationViewItem.Icon>

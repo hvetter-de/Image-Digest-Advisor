@@ -1,6 +1,7 @@
 using System.Net;
 using ImageDigestAdvisor.Core.Analysis;
 using ImageDigestAdvisor.Core.Credentials;
+using ImageDigestAdvisor.Core.History;
 using ImageDigestAdvisor.Core.Registry;
 using ImageDigestAdvisor.Core.Security;
 
@@ -12,8 +13,9 @@ public sealed class ImageDigestAdvisorServices : IDisposable
     private readonly bool _ownsHttp;
 
     /// <param name="vulnerabilityCache">Cache for OSV answers (they expire); defaults to memory.</param>
+    /// <param name="digestHistory">Local record of digests seen per tag; defaults to memory.</param>
     public ImageDigestAdvisorServices(IAppCredentialStore appCredentials, IContentCache cache, HttpClient? http = null, string? dockerConfigPath = null,
-        ITimedCache? vulnerabilityCache = null)
+        ITimedCache? vulnerabilityCache = null, DigestHistoryStore? digestHistory = null)
     {
         _ownsHttp = http is null;
         Http = http ?? CreateHttpClient();
@@ -24,8 +26,12 @@ public sealed class ImageDigestAdvisorServices : IDisposable
         Tags = new TagCatalog(Http, Registry);
         Inspector = new ImageInspector(Registry);
         Analyzer = new DigestAnalyzer(Registry, Tags, Inspector);
+        History = new TagHistoryService(Registry, Tags, Inspector, digestHistory ?? new DigestHistoryStore());
         Vulnerabilities = new VulnerabilityScanner(new SbomReader(Registry), new OsvClient(Http, vulnerabilityCache ?? new MemoryTimedCache()));
     }
+
+    /// <summary>Images a tag pointed to in the past (release tags + digests seen by the app).</summary>
+    public TagHistoryService History { get; }
 
     /// <summary>Known-vulnerability check (SBOM from the registry + OSV.dev). Opt-in in the app.</summary>
     public VulnerabilityScanner Vulnerabilities { get; }
